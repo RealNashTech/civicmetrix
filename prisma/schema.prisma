@@ -1,0 +1,723 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum KPIStatus {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum InsightType {
+  SERVICE_ANOMALY
+  SERVICE_CLUSTER
+  GRANT_RISK
+  KPI_TREND_ALERT
+}
+
+enum InsightSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum GrantStatus {
+  PIPELINE
+  DRAFT
+  SUBMITTED
+  AWARDED
+  REPORTING
+  CLOSED
+}
+
+enum GrantComplianceStatus {
+  COMPLIANT
+  AT_RISK
+  OVERDUE
+  NON_COMPLIANT
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+}
+
+enum WorkOrderPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Organization {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  users       User[]
+  dashboards  Dashboard[]
+  departments Department[]
+  programs    Program[]
+  kpis        KPI[]
+  grants      Grant[]
+  alerts      Alert[]
+  issueReports IssueReport[]
+  strategicGoals StrategicGoal[]
+  documents    Document[]
+  apiTokens    ApiToken[]
+  assets       Asset[]
+  workOrders   WorkOrder[]
+  maintenanceSchedules MaintenanceSchedule[]
+  budgets      Budget[]
+  citizens     Citizen[]
+  districts    District[]
+  wards        Ward[]
+  serviceZones ServiceZone[]
+  infrastructureLayers InfrastructureLayer[]
+  events       Event[]
+  slaPolicies  SLAPolicy[]
+  insights     Insight[]
+  councilReports CouncilReport[]
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  name           String
+  organizationId String
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  programs       Program[]
+  kpis           KPI[]
+  grants         Grant[]
+  alerts         Alert[]
+  issueReports         IssueReport[] @relation("ReportedIssueDepartment")
+  assignedIssueReports IssueReport[] @relation("AssignedIssueDepartment")
+  departmentPermissions DepartmentPermission[]
+  assets         Asset[]
+  workOrders     WorkOrder[]
+  budgets        Budget[]
+
+  @@index([organizationId])
+}
+
+model Program {
+  id             String       @id @default(cuid())
+  name           String
+  description    String?
+  departmentId   String
+  organizationId String
+  isPublic       Boolean      @default(false)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  department     Department   @relation(fields: [departmentId], references: [id])
+
+  budgets        Budget[]
+  kpis           KPI[]
+  grants         Grant[]
+  alerts         Alert[]
+  strategicObjectives StrategicObjective[]
+
+  @@index([organizationId])
+  @@index([departmentId])
+}
+
+model Budget {
+  id         String   @id @default(cuid())
+  organizationId String?
+  departmentId String?
+  programId  String?
+  fiscalYear Int
+  category   String   @default("GENERAL")
+  allocated  Decimal
+  spent      Decimal  @default(0)
+  createdAt  DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  program    Program?  @relation(fields: [programId], references: [id])
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([programId])
+}
+
+model User {
+  id             String       @id @default(cuid())
+  name           String
+  email          String
+  passwordHash   String
+  role           Role         @default(VIEWER)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  departmentPermissions DepartmentPermission[]
+  notifications  Notification[]
+
+  @@unique([email, organizationId])
+  @@index([organizationId])
+}
+
+model Dashboard {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  kpis           KPI[]
+  grants         Grant[]
+
+  @@index([organizationId])
+}
+
+model KPI {
+  id             String       @id @default(cuid())
+  name           String
+  value          Float
+  target         Float?
+  status         KPIStatus    @default(ON_TRACK)
+  unit           String?
+  periodLabel    String?
+  isPublic       Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dashboardId    String?
+  dashboard      Dashboard?   @relation(fields: [dashboardId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  programId      String?
+  program        Program?     @relation(fields: [programId], references: [id])
+  milestoneId    String?
+  milestone      GrantMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  history        KPIHistory[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([dashboardId])
+  @@index([departmentId])
+  @@index([programId])
+  @@index([milestoneId])
+}
+
+model Alert {
+  id             String        @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  programId      String?
+  title          String
+  message        String
+  severity       AlertSeverity @default(INFO)
+  createdAt      DateTime      @default(now())
+  resolvedAt     DateTime?
+
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  program        Program?      @relation(fields: [programId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([departmentId])
+  @@index([programId])
+}
+
+model KPIHistory {
+  id         String   @id @default(cuid())
+  kpiId      String
+  value      Decimal
+  recordedAt DateTime @default(now())
+
+  kpi        KPI      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@index([kpiId])
+  @@index([recordedAt])
+}
+
+model Grant {
+  id             String        @id @default(cuid())
+  name           String
+  status         GrantStatus   @default(PIPELINE)
+  amount         Decimal       @db.Decimal(12, 2)
+  applicationDeadline DateTime?
+  awardAmount    Decimal?      @db.Decimal(12, 2)
+  reportDueDate  DateTime?
+  isPublic       Boolean       @default(false)
+  startDate      DateTime?
+  endDate        DateTime?
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dashboardId    String?
+  dashboard      Dashboard?    @relation(fields: [dashboardId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  programId      String?
+  program        Program?      @relation(fields: [programId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  reportingFrequency String?
+  nextReportDue      DateTime?
+  lastReportSubmitted DateTime?
+  complianceStatus   GrantComplianceStatus?
+  metrics        GrantMetric[]
+  milestones     GrantMilestone[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([organizationId, status])
+  @@index([organizationId, applicationDeadline])
+  @@index([dashboardId])
+  @@index([departmentId])
+  @@index([programId])
+}
+
+model GrantMilestone {
+  id          String            @id @default(cuid())
+  grantId     String
+  name        String
+  description String?
+  dueDate     DateTime
+  completed   Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+
+  grant       Grant             @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  deliverables GrantDeliverable[]
+  kpis        KPI[]
+
+  @@index([grantId])
+  @@index([dueDate])
+}
+
+model GrantDeliverable {
+  id          String         @id @default(cuid())
+  milestoneId String
+  description String
+  completed   Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+
+  milestone   GrantMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  @@index([milestoneId])
+}
+
+model StrategicGoal {
+  id             String               @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  targetYear     Int?
+  createdAt      DateTime             @default(now())
+
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  objectives     StrategicObjective[]
+
+  @@index([organizationId, createdAt])
+}
+
+model StrategicObjective {
+  id              String         @id @default(cuid())
+  goalId          String
+  programId       String?
+  title           String
+  description     String?
+  progressPercent Int            @default(0)
+
+  goal            StrategicGoal  @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  program         Program?       @relation(fields: [programId], references: [id])
+
+  @@index([goalId])
+  @@index([programId])
+}
+
+model GrantMetric {
+  id        String   @id @default(cuid())
+  grantId   String
+  label     String
+  value     Float
+  unit      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  grant     Grant    @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([grantId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  entityType     String
+  entityId       String
+  userId         String
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model DepartmentPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  departmentId String
+  role         String
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@index([departmentId])
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  fileUrl        String
+  type           String
+  entityType     String?
+  entityId       String?
+  uploadedBy     String
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model ApiToken {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  tokenPrefix    String?      @db.VarChar(8)
+  tokenHash      String
+  scope          String
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([tokenPrefix])
+  @@index([revokedAt])
+}
+
+model IssueReport {
+  id             String       @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  assignedDepartmentId String?
+  assignedUserId String?
+  assetId        String?
+  citizenId      String?
+  latitude       Float?
+  longitude      Float?
+  location       Unsupported("geometry(Point,4326)")?
+  address        String?
+  photoUrl       String?
+  title          String
+  description    String
+  category       String
+  status         IssueStatus  @default(OPEN)
+  priority       IssuePriority?
+  reporterEmail  String?
+  reporterName   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  resolvedAt     DateTime?
+  slaResponseDueAt   DateTime?
+  slaResolutionDueAt DateTime?
+  slaBreached        Boolean   @default(false)
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  department     Department?  @relation("ReportedIssueDepartment", fields: [departmentId], references: [id])
+  assignedDepartment Department? @relation("AssignedIssueDepartment", fields: [assignedDepartmentId], references: [id])
+  asset          Asset?       @relation(fields: [assetId], references: [id])
+  citizen        Citizen?     @relation(fields: [citizenId], references: [id])
+  workOrders     WorkOrder[]
+  comments       IssueComment[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+  @@index([departmentId])
+  @@index([assignedDepartmentId])
+  @@index([assetId])
+  @@index([citizenId])
+  @@index([status])
+  @@index([priority])
+}
+
+model SLAPolicy {
+  id               String       @id @default(cuid())
+  organizationId   String
+  issueCategory    String
+  responseHours    Int
+  resolutionHours  Int
+  createdAt        DateTime     @default(now())
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([issueCategory])
+  @@unique([organizationId, issueCategory])
+}
+
+model Citizen {
+  id             String                @id @default(cuid())
+  email          String
+  name           String?
+  passwordHash   String
+  organizationId String
+  createdAt      DateTime              @default(now())
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  issues         IssueReport[]
+  notifications  CitizenNotification[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+}
+
+model IssueComment {
+  id         String      @id @default(cuid())
+  issueId    String
+  message    String
+  createdAt  DateTime    @default(now())
+  authorType String
+
+  issue      IssueReport @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model CitizenNotification {
+  id         String    @id @default(cuid())
+  citizenId  String
+  message    String
+  read       Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  citizen    Citizen   @relation(fields: [citizenId], references: [id], onDelete: Cascade)
+
+  @@index([citizenId, createdAt])
+}
+
+model District {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Ward {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model ServiceZone {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  type           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model InfrastructureLayer {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Asset {
+  id             String       @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  name           String
+  type           String
+  latitude       Float?
+  longitude      Float?
+  address        String?
+  installDate    DateTime?
+  conditionScore Int?
+  status         String       @default("ACTIVE")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  issues         IssueReport[]
+  workOrders     WorkOrder[]
+  maintenanceSchedules MaintenanceSchedule[]
+
+  @@index([organizationId])
+  @@index([departmentId])
+}
+
+model WorkOrder {
+  id             String       @id @default(cuid())
+  organizationId String
+  assetId        String?
+  issueId        String?
+  departmentId   String?
+  title          String
+  description    String?
+  status         WorkOrderStatus @default(OPEN)
+  priority       WorkOrderPriority?
+  scheduledDate  DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          Asset?       @relation(fields: [assetId], references: [id])
+  issue          IssueReport? @relation(fields: [issueId], references: [id])
+  department     Department?  @relation(fields: [departmentId], references: [id])
+
+  @@index([organizationId])
+  @@index([assetId])
+  @@index([status])
+}
+
+model MaintenanceSchedule {
+  id             String       @id @default(cuid())
+  organizationId String
+  assetId        String
+  name           String
+  frequencyDays  Int
+  lastCompleted  DateTime?
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  asset          Asset        @relation(fields: [assetId], references: [id])
+
+  @@index([organizationId])
+  @@index([assetId])
+}
+
+model Event {
+  id             String       @id @default(cuid())
+  organizationId String
+  type           String
+  entityType     String
+  entityId       String?
+  payload        Json?
+  processed      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  processedAt    DateTime?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([processed])
+  @@index([createdAt])
+}
+
+model Insight {
+  id             String          @id @default(cuid())
+  organizationId String
+  type           InsightType
+  severity       InsightSeverity @default(INFO)
+  title          String
+  description    String
+  sourceEntity   String?
+  sourceId       String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  resolvedAt     DateTime?
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, resolvedAt])
+  @@index([type])
+  @@index([sourceEntity, sourceId])
+}
+
+model CouncilReport {
+  id             String       @id @default(cuid())
+  organizationId String
+  generatedById  String
+  reportDate     DateTime
+  summary        Json
+  createdAt      DateTime     @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+}
