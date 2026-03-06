@@ -2,26 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
-
-function requireEditor(role: AppRole) {
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-}
+import { requireStaffUser } from "@/lib/security/authorization";
 
 export async function createGoal(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditor(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -55,13 +41,7 @@ export async function createGoal(formData: FormData) {
 }
 
 export async function createObjective(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditor(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const goalId = String(formData.get("goalId") ?? "").trim();
   const programId = String(formData.get("programId") ?? "").trim();

@@ -4,6 +4,11 @@ const { eventCreateMock } = vi.hoisted(() => ({
   eventCreateMock: vi.fn(),
 }));
 
+const { getTenantContextMock, getTenantIdFromRequestHeadersMock } = vi.hoisted(() => ({
+  getTenantContextMock: vi.fn(),
+  getTenantIdFromRequestHeadersMock: vi.fn(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   default: {
     event: {
@@ -12,11 +17,23 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/tenant-context", () => ({
+  getTenantContext: getTenantContextMock,
+  getTenantIdFromRequestHeaders: getTenantIdFromRequestHeadersMock,
+}));
+
 import { createEvent } from "@/lib/events";
 
 describe("createEvent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getTenantContextMock.mockReturnValue({
+      organizationId: "org_1",
+      principalType: "staff",
+      principalId: "user_1",
+      role: "ADMIN",
+    });
+    getTenantIdFromRequestHeadersMock.mockResolvedValue(null);
   });
 
   it("creates an event with required fields", async () => {

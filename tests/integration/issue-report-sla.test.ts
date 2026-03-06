@@ -2,15 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   eventFindManyMock,
-  eventUpdateMock,
+  eventUpdateManyMock,
   issueFindUniqueMock,
-  issueUpdateMock,
+  issueUpdateManyMock,
   slaPolicyFindFirstMock,
 } = vi.hoisted(() => ({
   eventFindManyMock: vi.fn(),
-  eventUpdateMock: vi.fn(),
+  eventUpdateManyMock: vi.fn(),
   issueFindUniqueMock: vi.fn(),
-  issueUpdateMock: vi.fn(),
+  issueUpdateManyMock: vi.fn(),
   slaPolicyFindFirstMock: vi.fn(),
 }));
 
@@ -18,11 +18,11 @@ vi.mock("@/lib/prisma", () => ({
   default: {
     event: {
       findMany: eventFindManyMock,
-      update: eventUpdateMock,
+      updateMany: eventUpdateManyMock,
     },
     issueReport: {
       findUnique: issueFindUniqueMock,
-      update: issueUpdateMock,
+      updateMany: issueUpdateManyMock,
     },
     sLAPolicy: {
       findFirst: slaPolicyFindFirstMock,
@@ -64,14 +64,12 @@ describe("issue report SLA integration flow", () => {
       responseHours: 1,
       resolutionHours: 6,
     });
-    issueUpdateMock.mockResolvedValueOnce({
-      id: "issue_1",
-    });
-    eventUpdateMock.mockResolvedValue({ id: "evt_1" });
+    issueUpdateManyMock.mockResolvedValueOnce({ count: 1 });
+    eventUpdateManyMock.mockResolvedValue({ count: 1 });
 
     await runEventWorker(100);
 
-    expect(issueUpdateMock).toHaveBeenCalledWith(
+    expect(issueUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           id: "issue_1",
@@ -83,8 +81,11 @@ describe("issue report SLA integration flow", () => {
         },
       }),
     );
-    expect(eventUpdateMock).toHaveBeenCalledWith({
-      where: { id: "evt_1" },
+    expect(eventUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ["evt_1"] },
+        processed: false,
+      },
       data: {
         processed: true,
         processedAt: expect.any(Date),

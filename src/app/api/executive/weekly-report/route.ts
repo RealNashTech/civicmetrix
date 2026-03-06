@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/lib/auth";
-import { requireApiScope } from "@/lib/auth/require-api-scope";
-import { AuthError, requireStaff } from "@/lib/auth/require-staff";
 import { getOrSetJsonCache } from "@/lib/cache";
 import { db } from "@/lib/db";
+import { withApiObservability } from "@/lib/observability/http";
+import { AuthorizationError, authorizeStaffOrApiScope } from "@/lib/security/authorization";
 
 function asPercent(part: number, total: number) {
   if (total <= 0) {
@@ -13,22 +12,14 @@ function asPercent(part: number, total: number) {
   return Math.round((part / total) * 100);
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   let organizationId: string;
 
   try {
-    const session = await auth();
-    const user = session?.user;
-
-    if (user) {
-      const staff = await requireStaff();
-      organizationId = staff.organizationId;
-    } else {
-      const token = await requireApiScope(request, "city:read");
-      organizationId = token.organizationId;
-    }
+    const context = await authorizeStaffOrApiScope(request, "city:read");
+    organizationId = context.organizationId;
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof AuthorizationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json({ error: "Authorization failed." }, { status: 500 });
@@ -157,3 +148,5 @@ export async function GET(request: Request) {
 
   return NextResponse.json(payload);
 }
+
+export const GET = withApiObservability("/api/executive/weekly-report", "GET", handleGet);

@@ -15,15 +15,87 @@ const connection =
     : null;
 
 export const eventProcessingQueue = connection
-  ? new Queue("event-processing", { connection })
+  ? new Queue("event-processing", {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 1_000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+        timeout: 120_000,
+      },
+    })
   : null;
 export const grantRemindersQueue = connection
-  ? new Queue("grant-reminders", { connection })
+  ? new Queue("grant-reminders", {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 1_000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+        timeout: 120_000,
+      },
+    })
   : null;
-export const issueSlaQueue = connection ? new Queue("issue-sla", { connection }) : null;
+export const issueSlaQueue = connection
+  ? new Queue("issue-sla", {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 1_000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+        timeout: 120_000,
+      },
+    })
+  : null;
 export const maintenanceSchedulerQueue = connection
-  ? new Queue("maintenance-scheduler", { connection })
+  ? new Queue("maintenance-scheduler", {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 1_000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+        timeout: 120_000,
+      },
+    })
   : null;
 export const civicIntelligenceQueue = connection
-  ? new Queue("civic-intelligence", { connection })
+  ? new Queue("civic-intelligence", {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 1_000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+        timeout: 120_000,
+      },
+    })
+  : null;
+export const deadLetterQueue = connection
+  ? new Queue("dead-letter", {
+      connection,
+      defaultJobOptions: {
+        attempts: 1,
+        removeOnComplete: 500,
+        removeOnFail: 500,
+      },
+    })
   : null;

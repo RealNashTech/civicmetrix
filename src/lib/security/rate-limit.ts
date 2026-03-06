@@ -1,20 +1,22 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-import { AuthError } from "@/lib/auth/require-staff";
+import { AuthorizationError } from "@/lib/policies/base";
 
-type RateLimitKey = "auth/register" | "issue submit" | "file upload";
+type RateLimitKey = "auth/register" | "issue submit" | "file upload" | "internal metrics";
 
 const LIMIT_CONFIG: Record<RateLimitKey, { requests: number; windowMs: number }> = {
   "auth/register": { requests: 10, windowMs: 60_000 },
   "issue submit": { requests: 20, windowMs: 60_000 },
   "file upload": { requests: 5, windowMs: 60_000 },
+  "internal metrics": { requests: 30, windowMs: 60_000 },
 };
 
 const localBuckets = new Map<string, number[]>();
 
 const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const isProduction = process.env.NODE_ENV === "production";
 
 const redis =
   upstashUrl && upstashToken
@@ -38,6 +40,10 @@ const upstashLimiters: Partial<Record<RateLimitKey, Ratelimit>> = redis
         redis,
         limiter: Ratelimit.slidingWindow(5, "1 m"),
       }),
+      "internal metrics": new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(30, "1 m"),
+      }),
     }
   : {};
 
@@ -58,7 +64,7 @@ function enforceLocalSlidingWindow(route: RateLimitKey, identifier: string) {
   const history = (localBuckets.get(key) ?? []).filter((value) => value > windowStart);
 
   if (history.length >= requests) {
-    throw new AuthError(429, "Rate limit exceeded.");
+    throw new AuthorizationError(429, "Rate limit exceeded.");
   }
 
   history.push(now);
@@ -69,13 +75,16 @@ async function enforceForIdentifier(route: RateLimitKey, identifier: string) {
   const limiter = upstashLimiters[route];
 
   if (!limiter) {
+    if (isProduction) {
+      throw new AuthorizationError(500, "Rate limiting backend not configured.");
+    }
     enforceLocalSlidingWindow(route, identifier);
     return;
   }
 
   const result = await limiter.limit(`${route}:${identifier}`);
   if (!result.success) {
-    throw new AuthError(429, "Rate limit exceeded.");
+    throw new AuthorizationError(429, "Rate limit exceeded.");
   }
 }
 

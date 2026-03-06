@@ -1,17 +1,21 @@
-/*
-  Warnings:
-
-  - Added the required column `updatedAt` to the `IssueReport` table without a default value. This is not possible if the table is not empty.
-
-*/
 -- CreateEnum
 CREATE TYPE "IssuePriority" AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'URGENT');
 
--- AlterTable
-ALTER TABLE "IssueReport" ADD COLUMN     "assignedDepartmentId" TEXT,
-ADD COLUMN     "assignedUserId" TEXT,
-ADD COLUMN     "priority" "IssuePriority",
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
+-- Expand
+ALTER TABLE "IssueReport"
+ADD COLUMN "assignedDepartmentId" TEXT,
+ADD COLUMN "assignedUserId" TEXT,
+ADD COLUMN "priority" "IssuePriority",
+ADD COLUMN "updatedAt" TIMESTAMP(3);
+
+-- Backfill
+UPDATE "IssueReport"
+SET "updatedAt" = COALESCE("updatedAt", "createdAt", NOW())
+WHERE "updatedAt" IS NULL;
+
+-- Contract
+ALTER TABLE "IssueReport"
+ALTER COLUMN "updatedAt" SET NOT NULL;
 
 -- CreateIndex
 CREATE INDEX "IssueReport_assignedDepartmentId_idx" ON "IssueReport"("assignedDepartmentId");

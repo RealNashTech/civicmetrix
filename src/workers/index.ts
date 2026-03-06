@@ -1,5 +1,9 @@
-import { Queue, Worker } from "bullmq";
+import { randomUUID } from "crypto";
+import { Job, Queue, Worker } from "bullmq";
 
+import { runWithObservabilityContext } from "@/lib/observability/context";
+import { logger } from "@/lib/observability/logger";
+import { installProcessErrorHandlers } from "@/lib/observability/process-errors";
 import { runEventWorker } from "@/workers/event-worker";
 import { runGrantDeadlineWorker } from "@/workers/grant-deadline-worker";
 import { runGrantPipelineRefreshWorker } from "@/workers/grant-pipeline-refresh-worker";
@@ -11,22 +15,74 @@ import { runSpatialClusterWorker } from "@/workers/intelligence/spatial-cluster-
 import { runIssueSlaWorker } from "@/workers/issue-sla-worker";
 import { runMaintenanceSchedulerWorker } from "@/workers/maintenance-scheduler-worker";
 
-type LogLevel = "info" | "error";
+const JOB_TIMEOUT_MS = 120_000;
+const JOB_ATTEMPTS = 3;
 
-function log(level: LogLevel, message: string, metadata?: Record<string, unknown>) {
-  const entry = {
-    level,
-    message,
-    timestamp: new Date().toISOString(),
-    ...metadata,
-  };
+async function pushToDeadLetterQueue(deadLetterQueue: Queue, workerType: string, job: Job | undefined, error: Error) {
+  await deadLetterQueue.add(
+    "dead-letter",
+    {
+      workerType,
+      failedJobId: job?.id ?? null,
+      failedJobName: job?.name ?? null,
+      attemptsMade: job?.attemptsMade ?? 0,
+      payload: job?.data ?? null,
+      failureReason: error.message,
+      failedAt: new Date().toISOString(),
+    },
+    {
+      jobId: `dlq:${workerType}:${job?.id ?? randomUUID()}:${Date.now()}`,
+      removeOnComplete: 500,
+      removeOnFail: 500,
+    },
+  );
+}
 
-  const output = JSON.stringify(entry);
-  if (level === "error") {
-    console.error(output);
-    return;
-  }
-  console.log(output);
+async function runInstrumentedJob(
+  workerType: string,
+  job: Job,
+  handler: () => Promise<void>,
+) {
+  const startedAt = Date.now();
+  const requestId = `worker-${job.id ?? randomUUID()}`;
+
+  return runWithObservabilityContext(
+    {
+      requestId,
+      route: `worker:${workerType}`,
+      workerType,
+      jobId: String(job.id ?? ""),
+    },
+    async () => {
+      logger.info("worker_job_started", {
+        workerType,
+        jobId: job.id ?? null,
+        jobName: job.name,
+        retryCount: job.attemptsMade,
+      });
+
+      try {
+        await handler();
+        logger.info("worker_job_completed", {
+          workerType,
+          jobId: job.id ?? null,
+          jobName: job.name,
+          runtime: Date.now() - startedAt,
+          retryCount: job.attemptsMade,
+        });
+      } catch (error) {
+        logger.error("worker_job_failed", {
+          workerType,
+          jobId: job.id ?? null,
+          jobName: job.name,
+          runtime: Date.now() - startedAt,
+          retryCount: job.attemptsMade,
+          failureReason: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    },
+  );
 }
 
 function getRedisConnection() {
@@ -50,18 +106,31 @@ async function scheduleRepeatableJobs(
   issueSlaQueue: Queue,
   maintenanceQueue: Queue,
   civicIntelligenceQueue: Queue,
+  deadLetterQueue: Queue,
 ) {
+  await deadLetterQueue.add(
+    "run-dead-letter-metrics",
+    {},
+    {
+      jobId: "repeat:dead-letter-health:5m",
+      repeat: { every: 5 * 60 * 1000 },
+      removeOnComplete: 10,
+      removeOnFail: 10,
+    },
+  );
+
   await eventQueue.add(
     "run-event-worker",
     {},
     {
       jobId: "repeat:event-worker:10s",
       repeat: { every: 10_000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -73,11 +142,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:grant-reminder-worker:15m",
       repeat: { every: 15 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -89,11 +159,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:grant-deadline-worker:24h",
       repeat: { every: 24 * 60 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -105,11 +176,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:grant-pipeline-refresh-worker:5m",
       repeat: { every: 5 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -121,11 +193,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:issue-sla-worker:5m",
       repeat: { every: 5 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -137,11 +210,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:maintenance-scheduler-worker:1h",
       repeat: { every: 60 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -153,11 +227,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:issue-anomaly-worker:30m",
       repeat: { every: 30 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -169,11 +244,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:grant-risk-worker:60m",
       repeat: { every: 60 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -185,11 +261,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:kpi-trend-worker:60m",
       repeat: { every: 60 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -201,11 +278,12 @@ async function scheduleRepeatableJobs(
     {
       jobId: "repeat:spatial-cluster-worker:30m",
       repeat: { every: 30 * 60 * 1000 },
-      attempts: 3,
+      attempts: JOB_ATTEMPTS,
       backoff: {
         type: "exponential",
         delay: 1_000,
       },
+      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -213,6 +291,7 @@ async function scheduleRepeatableJobs(
 }
 
 async function bootstrapWorkers() {
+  installProcessErrorHandlers();
   const connection = getRedisConnection();
 
   const eventQueue = new Queue("event-processing", { connection });
@@ -220,6 +299,7 @@ async function bootstrapWorkers() {
   const issueSlaQueue = new Queue("issue-sla", { connection });
   const maintenanceQueue = new Queue("maintenance-scheduler", { connection });
   const civicIntelligenceQueue = new Queue("civic-intelligence", { connection });
+  const deadLetterQueue = new Queue("dead-letter", { connection });
 
   await scheduleRepeatableJobs(
     eventQueue,
@@ -227,172 +307,200 @@ async function bootstrapWorkers() {
     issueSlaQueue,
     maintenanceQueue,
     civicIntelligenceQueue,
+    deadLetterQueue,
   );
+
+  const workerOptions = {
+    connection,
+    concurrency: 1,
+    maxStalledCount: 1,
+    stalledInterval: 30_000,
+  } as const;
 
   const eventWorker = new Worker(
     "event-processing",
     async (job) => {
-      log("info", `Worker executed job: ${job.name}`, { worker: "event-processing" });
-      await runEventWorker();
+      await runInstrumentedJob("event-processing", job, async () => {
+        await runEventWorker();
+      });
     },
-    { connection, concurrency: 1 },
+    workerOptions,
   );
 
   const grantReminderWorker = new Worker(
     "grant-reminders",
     async (job) => {
-      log("info", `Worker executed job: ${job.name}`, { worker: "grant-reminders" });
-      if (job.name === "run-grant-reminder-worker") {
-        await runGrantReminderWorker();
-        return;
-      }
+      await runInstrumentedJob("grant-reminders", job, async () => {
+        if (job.name === "run-grant-reminder-worker") {
+          await runGrantReminderWorker();
+          return;
+        }
 
-      if (job.name === "run-grant-deadline-worker") {
-        await runGrantDeadlineWorker();
-        return;
-      }
+        if (job.name === "run-grant-deadline-worker") {
+          await runGrantDeadlineWorker();
+          return;
+        }
 
-      if (job.name === "run-grant-pipeline-refresh-worker") {
-        await runGrantPipelineRefreshWorker();
-        return;
-      }
+        if (job.name === "run-grant-pipeline-refresh-worker") {
+          await runGrantPipelineRefreshWorker();
+          return;
+        }
 
-      log("error", "Unknown grant-reminders job", {
-        worker: "grant-reminders",
-        jobName: job.name,
+        logger.error("worker_unknown_job", {
+          workerType: "grant-reminders",
+          jobName: job.name,
+        });
       });
     },
-    { connection, concurrency: 1 },
+    workerOptions,
   );
 
   const issueSlaWorker = new Worker(
     "issue-sla",
     async (job) => {
-      log("info", `Worker executed job: ${job.name}`, { worker: "issue-sla" });
-      await runIssueSlaWorker();
+      await runInstrumentedJob("issue-sla", job, async () => {
+        await runIssueSlaWorker();
+      });
     },
-    { connection, concurrency: 1 },
+    workerOptions,
   );
 
   const maintenanceWorker = new Worker(
     "maintenance-scheduler",
     async (job) => {
-      log("info", `Worker executed job: ${job.name}`, { worker: "maintenance-scheduler" });
-      await runMaintenanceSchedulerWorker();
+      await runInstrumentedJob("maintenance-scheduler", job, async () => {
+        await runMaintenanceSchedulerWorker();
+      });
     },
-    { connection, concurrency: 1 },
+    workerOptions,
   );
 
   const civicIntelligenceWorker = new Worker(
     "civic-intelligence",
     async (job) => {
-      log("info", `Worker executed job: ${job.name}`, { worker: "civic-intelligence" });
-      if (job.name === "run-issue-anomaly-worker") {
-        await runIssueAnomalyWorker();
-        return;
-      }
+      await runInstrumentedJob("civic-intelligence", job, async () => {
+        if (job.name === "run-issue-anomaly-worker") {
+          await runIssueAnomalyWorker();
+          return;
+        }
 
-      if (job.name === "run-grant-risk-worker") {
-        await runGrantRiskWorker();
-        return;
-      }
+        if (job.name === "run-grant-risk-worker") {
+          await runGrantRiskWorker();
+          return;
+        }
 
-      if (job.name === "run-kpi-trend-worker") {
-        await runKpiTrendWorker();
-        return;
-      }
+        if (job.name === "run-kpi-trend-worker") {
+          await runKpiTrendWorker();
+          return;
+        }
 
-      if (job.name === "run-spatial-cluster-worker") {
-        await runSpatialClusterWorker();
-        return;
-      }
+        if (job.name === "run-spatial-cluster-worker") {
+          await runSpatialClusterWorker();
+          return;
+        }
 
-      log("error", "Unknown civic-intelligence job", {
-        worker: "civic-intelligence",
-        jobName: job.name,
+        logger.error("worker_unknown_job", {
+          workerType: "civic-intelligence",
+          jobName: job.name,
+        });
       });
     },
-    { connection, concurrency: 1 },
+    workerOptions,
   );
 
   eventWorker.on("error", (error) => {
-    log("error", "Worker error: event-processing", {
-      worker: "event-processing",
-      error: error.message,
+    logger.error("worker_error", {
+      workerType: "event-processing",
+      failureReason: error.message,
     });
   });
   eventWorker.on("failed", (job, error) => {
-    log("error", "Worker failed job: event-processing", {
-      worker: "event-processing",
+    logger.error("worker_failed", {
+      workerType: "event-processing",
       jobName: job?.name ?? null,
-      error: error.message,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
     });
+    void pushToDeadLetterQueue(deadLetterQueue, "event-processing", job, error);
   });
 
   grantReminderWorker.on("error", (error) => {
-    log("error", "Worker error: grant-reminders", {
-      worker: "grant-reminders",
-      error: error.message,
+    logger.error("worker_error", {
+      workerType: "grant-reminders",
+      failureReason: error.message,
     });
   });
   grantReminderWorker.on("failed", (job, error) => {
-    log("error", "Worker failed job: grant-reminders", {
-      worker: "grant-reminders",
+    logger.error("worker_failed", {
+      workerType: "grant-reminders",
       jobName: job?.name ?? null,
-      error: error.message,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
     });
+    void pushToDeadLetterQueue(deadLetterQueue, "grant-reminders", job, error);
   });
 
   issueSlaWorker.on("error", (error) => {
-    log("error", "Worker error: issue-sla", {
-      worker: "issue-sla",
-      error: error.message,
+    logger.error("worker_error", {
+      workerType: "issue-sla",
+      failureReason: error.message,
     });
   });
   issueSlaWorker.on("failed", (job, error) => {
-    log("error", "Worker failed job: issue-sla", {
-      worker: "issue-sla",
+    logger.error("worker_failed", {
+      workerType: "issue-sla",
       jobName: job?.name ?? null,
-      error: error.message,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
     });
+    void pushToDeadLetterQueue(deadLetterQueue, "issue-sla", job, error);
   });
 
   maintenanceWorker.on("error", (error) => {
-    log("error", "Worker error: maintenance-scheduler", {
-      worker: "maintenance-scheduler",
-      error: error.message,
+    logger.error("worker_error", {
+      workerType: "maintenance-scheduler",
+      failureReason: error.message,
     });
   });
   maintenanceWorker.on("failed", (job, error) => {
-    log("error", "Worker failed job: maintenance-scheduler", {
-      worker: "maintenance-scheduler",
+    logger.error("worker_failed", {
+      workerType: "maintenance-scheduler",
       jobName: job?.name ?? null,
-      error: error.message,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
     });
+    void pushToDeadLetterQueue(deadLetterQueue, "maintenance-scheduler", job, error);
   });
 
   civicIntelligenceWorker.on("error", (error) => {
-    log("error", "Worker error: civic-intelligence", {
-      worker: "civic-intelligence",
-      error: error.message,
+    logger.error("worker_error", {
+      workerType: "civic-intelligence",
+      failureReason: error.message,
     });
   });
   civicIntelligenceWorker.on("failed", (job, error) => {
-    log("error", "Worker failed job: civic-intelligence", {
-      worker: "civic-intelligence",
+    logger.error("worker_failed", {
+      workerType: "civic-intelligence",
       jobName: job?.name ?? null,
-      error: error.message,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
     });
+    void pushToDeadLetterQueue(deadLetterQueue, "civic-intelligence", job, error);
   });
 
-  log("info", "Worker started: event-processing", { worker: "event-processing" });
-  log("info", "Worker started: grant-reminders", { worker: "grant-reminders" });
-  log("info", "Worker started: issue-sla", { worker: "issue-sla" });
-  log("info", "Worker started: maintenance-scheduler", { worker: "maintenance-scheduler" });
-  log("info", "Worker started: civic-intelligence", { worker: "civic-intelligence" });
+  logger.info("worker_started", { workerType: "event-processing" });
+  logger.info("worker_started", { workerType: "grant-reminders" });
+  logger.info("worker_started", { workerType: "issue-sla" });
+  logger.info("worker_started", { workerType: "maintenance-scheduler" });
+  logger.info("worker_started", { workerType: "civic-intelligence" });
 }
 
 export async function startWorkers() {
-  console.log("[workers] starting worker system");
+  logger.info("worker_system_starting");
   await bootstrapWorkers();
 }

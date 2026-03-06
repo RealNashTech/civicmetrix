@@ -2,24 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
+import { requireStaffUser } from "@/lib/security/authorization";
 
 export async function createAsset(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const name = String(formData.get("name") ?? "").trim();
   const type = String(formData.get("type") ?? "").trim();

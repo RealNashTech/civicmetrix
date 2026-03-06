@@ -11,6 +11,11 @@ const { hashMock, compareMock, apiTokenCreateMock, apiTokenFindManyMock, apiToke
     apiTokenUpdateMock: vi.fn(),
   }));
 
+const { getTenantContextMock, getTenantIdFromRequestHeadersMock } = vi.hoisted(() => ({
+  getTenantContextMock: vi.fn(),
+  getTenantIdFromRequestHeadersMock: vi.fn(),
+}));
+
 vi.mock("bcryptjs", () => ({
   hash: hashMock,
   compare: compareMock,
@@ -26,11 +31,23 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/lib/tenant-context", () => ({
+  getTenantContext: getTenantContextMock,
+  getTenantIdFromRequestHeaders: getTenantIdFromRequestHeadersMock,
+}));
+
 import { createApiToken, generateApiToken, validateApiToken } from "@/lib/api-token-service";
 
 describe("api-token-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getTenantContextMock.mockReturnValue({
+      organizationId: "org_1",
+      principalType: "staff",
+      principalId: "user_1",
+      role: "ADMIN",
+    });
+    getTenantIdFromRequestHeadersMock.mockResolvedValue(null);
   });
 
   it("generates a secure token", () => {

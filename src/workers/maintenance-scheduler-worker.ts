@@ -1,10 +1,12 @@
 import { notifyOrganizationEditors } from "@/lib/notifications";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { WorkOrderPriority, WorkOrderStatus } from "@prisma/client";
+
+const BATCH_SIZE = 500;
 
 export async function runMaintenanceSchedulerWorker() {
   const now = new Date();
-  const schedules = await db().maintenanceSchedule.findMany({
+  const schedules = await dbSystem().maintenanceSchedule.findMany({
     include: {
       asset: {
         select: {
@@ -14,36 +16,49 @@ export async function runMaintenanceSchedulerWorker() {
         },
       },
     },
+    take: BATCH_SIZE,
   });
 
-  for (const schedule of schedules) {
+  const dueSchedules = schedules.filter((schedule) => {
     const baseDate = schedule.lastCompleted ?? schedule.createdAt;
     const dueDate = new Date(baseDate);
     dueDate.setDate(dueDate.getDate() + schedule.frequencyDays);
+    return dueDate <= now;
+  });
 
-    if (dueDate > now) {
-      continue;
-    }
+  if (dueSchedules.length === 0) {
+    return;
+  }
 
-    const title = `Preventive Maintenance: ${schedule.name}`;
-    const existing = await db().workOrder.findFirst({
-      where: {
+  const existingOpenOrders = await dbSystem().workOrder.findMany({
+    where: {
+      OR: dueSchedules.map((schedule) => ({
         organizationId: schedule.organizationId,
         assetId: schedule.assetId,
-        title,
-        status: {
-          in: [WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.BLOCKED],
-        },
+        title: `Preventive Maintenance: ${schedule.name}`,
+      })),
+      status: {
+        in: [WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.BLOCKED],
       },
-      select: { id: true },
-    });
+    },
+    select: {
+      organizationId: true,
+      assetId: true,
+      title: true,
+    },
+  });
+  const existingKeys = new Set(
+    existingOpenOrders.map((order) => `${order.organizationId}:${order.assetId ?? "none"}:${order.title}`),
+  );
 
-    if (existing) {
-      continue;
-    }
-
-    await db().workOrder.create({
-      data: {
+  const toCreate = dueSchedules
+    .map((schedule) => {
+      const title = `Preventive Maintenance: ${schedule.name}`;
+      const key = `${schedule.organizationId}:${schedule.assetId}:${title}`;
+      if (existingKeys.has(key)) {
+        return null;
+      }
+      return {
         organizationId: schedule.organizationId,
         assetId: schedule.asset.id,
         departmentId: schedule.asset.departmentId,
@@ -52,13 +67,32 @@ export async function runMaintenanceSchedulerWorker() {
         status: WorkOrderStatus.OPEN,
         priority: WorkOrderPriority.MEDIUM,
         scheduledDate: now,
-      },
+      };
+    })
+    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+
+  if (toCreate.length > 0) {
+    await dbSystem().workOrder.createMany({
+      data: toCreate,
+      skipDuplicates: true,
     });
+  }
+
+  const notifiedOrganizations = new Set<string>();
+  for (const schedule of schedules) {
+    const baseDate = schedule.lastCompleted ?? schedule.createdAt;
+    const dueDate = new Date(baseDate);
+    dueDate.setDate(dueDate.getDate() + schedule.frequencyDays);
+    if (dueDate > now || notifiedOrganizations.has(schedule.organizationId)) {
+      continue;
+    }
+    notifiedOrganizations.add(schedule.organizationId);
 
     await notifyOrganizationEditors(
       schedule.organizationId,
-      `Maintenance work order created for asset ${schedule.asset.name}`,
+      "Preventive maintenance work orders generated",
       "/dashboard/work-orders",
+      dbSystem(),
     );
   }
 }

@@ -3,16 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit";
-import { auth } from "@/lib/auth";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
-
-function requireEditorRole(role: AppRole) {
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-}
+import { requireStaffUser } from "@/lib/security/authorization";
 
 function parseDate(value: FormDataEntryValue | null): Date | null {
   const raw = String(value ?? "").trim();
@@ -20,14 +12,7 @@ function parseDate(value: FormDataEntryValue | null): Date | null {
 }
 
 export async function createProgram(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -103,14 +88,7 @@ export async function createProgram(formData: FormData) {
 }
 
 export async function updateProgram(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -206,14 +184,7 @@ export async function updateProgram(formData: FormData) {
 }
 
 export async function deleteProgram(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {
@@ -232,8 +203,8 @@ export async function deleteProgram(formData: FormData) {
     throw new Error("Program not found.");
   }
 
-  await db().$transaction([
-    db().kPI.updateMany({
+  await db().$transaction(async (tx) => {
+    await tx.kPI.updateMany({
       where: {
         organizationId: user.organizationId,
         programId: existing.id,
@@ -241,8 +212,9 @@ export async function deleteProgram(formData: FormData) {
       data: {
         programId: null,
       },
-    }),
-    db().grant.updateMany({
+    });
+
+    await tx.grant.updateMany({
       where: {
         organizationId: user.organizationId,
         programId: existing.id,
@@ -250,24 +222,27 @@ export async function deleteProgram(formData: FormData) {
       data: {
         programId: null,
       },
-    }),
-    db().budget.deleteMany({
+    });
+
+    await tx.budget.deleteMany({
       where: {
         programId: existing.id,
       },
-    }),
-    db().strategicObjective.updateMany({
+    });
+
+    await tx.strategicObjective.updateMany({
       where: {
         programId: existing.id,
       },
       data: {
         programId: null,
       },
-    }),
-    db().program.delete({
+    });
+
+    await tx.program.delete({
       where: { id: existing.id },
-    }),
-  ]);
+    });
+  });
 
   await createAuditLog({
     action: "PROGRAM_DELETE",

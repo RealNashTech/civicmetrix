@@ -1,27 +1,27 @@
-/*
-  Warnings:
+-- Expand
+DROP INDEX IF EXISTS "ApiToken_organizationId_createdAt_idx";
+DROP INDEX IF EXISTS "ApiToken_token_key";
 
-  - You are about to drop the column `token` on the `ApiToken` table. All the data in the column will be lost.
-  - Added the required column `scope` to the `ApiToken` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `tokenHash` to the `ApiToken` table without a default value. This is not possible if the table is not empty.
+ALTER TABLE "ApiToken"
+  ADD COLUMN IF NOT EXISTS "expiresAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "lastUsedAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "revokedAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "scope" TEXT,
+  ADD COLUMN IF NOT EXISTS "tokenHash" TEXT;
 
-*/
--- DropIndex
-DROP INDEX "ApiToken_organizationId_createdAt_idx";
+-- Backfill for non-empty tables
+UPDATE "ApiToken"
+SET
+  "scope" = COALESCE(NULLIF("scope", ''), 'legacy:full'),
+  "tokenHash" = COALESCE(NULLIF("tokenHash", ''), md5(COALESCE("token", "id" || ':' || "name")))
+WHERE "scope" IS NULL OR "tokenHash" IS NULL;
 
--- DropIndex
-DROP INDEX "ApiToken_token_key";
+-- Contract
+ALTER TABLE "ApiToken"
+  ALTER COLUMN "scope" SET NOT NULL,
+  ALTER COLUMN "tokenHash" SET NOT NULL;
 
--- AlterTable
-ALTER TABLE "ApiToken" DROP COLUMN "token",
-ADD COLUMN     "expiresAt" TIMESTAMP(3),
-ADD COLUMN     "lastUsedAt" TIMESTAMP(3),
-ADD COLUMN     "revokedAt" TIMESTAMP(3),
-ADD COLUMN     "scope" TEXT NOT NULL,
-ADD COLUMN     "tokenHash" TEXT NOT NULL;
+ALTER TABLE "ApiToken" DROP COLUMN IF EXISTS "token";
 
--- CreateIndex
-CREATE INDEX "ApiToken_organizationId_idx" ON "ApiToken"("organizationId");
-
--- CreateIndex
-CREATE INDEX "ApiToken_revokedAt_idx" ON "ApiToken"("revokedAt");
+CREATE INDEX IF NOT EXISTS "ApiToken_organizationId_idx" ON "ApiToken"("organizationId");
+CREATE INDEX IF NOT EXISTS "ApiToken_revokedAt_idx" ON "ApiToken"("revokedAt");

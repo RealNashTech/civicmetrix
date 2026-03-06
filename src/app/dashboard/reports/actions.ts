@@ -2,19 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/lib/auth";
-import { requireOrganization } from "@/lib/auth/require-org";
 import { db } from "@/lib/db";
 import { generateCouncilReport } from "@/lib/reports/generate-council-report";
+import { requireStaffUser } from "@/lib/security/authorization";
 
 export async function createCouncilReport() {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-  const organizationId = requireOrganization(session);
+  const user = await requireStaffUser();
+  const organizationId = user.organizationId;
 
   const summary = await generateCouncilReport(organizationId);
 

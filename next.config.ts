@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import { buildContentSecurityPolicy } from "./src/lib/security/csp";
+import { validateEnv } from "./src/lib/config/env";
+
+validateEnv();
 
 const securityHeaders = [
   {
@@ -23,8 +27,7 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
-    value:
-      "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:",
+    value: buildContentSecurityPolicy(),
   },
 ];
 

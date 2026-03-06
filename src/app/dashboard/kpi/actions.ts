@@ -2,27 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { checkKpiAlerts } from "@/lib/alerts/checkKpiAlerts";
 import { createEvent } from "@/lib/events";
-import { hasMinimumRole } from "@/lib/permissions";
 import { calculateKpiStatus } from "@/lib/performance/calculateKpiStatus";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
+import { requireStaffUser } from "@/lib/security/authorization";
 
 export async function createKpi(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const name = String(formData.get("name") ?? "").trim();
   const unit = String(formData.get("unit") ?? "").trim();
@@ -154,17 +142,7 @@ export async function createKpi(formData: FormData) {
 }
 
 export async function updateKpi(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -315,17 +293,7 @@ export async function updateKpi(formData: FormData) {
 }
 
 export async function toggleKpiPublic(id: string) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const existing = await db().kPI.findFirst({
     where: {
@@ -364,17 +332,7 @@ export async function toggleKpiPublic(id: string) {
 }
 
 export async function deleteKpi(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {

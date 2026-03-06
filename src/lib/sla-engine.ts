@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type SlaIssueInput = {
   id: string;
@@ -7,7 +7,7 @@ type SlaIssueInput = {
 };
 
 export async function calculateIssueSLA(issue: SlaIssueInput) {
-  const policy = await db().sLAPolicy.findFirst({
+  const policy = await dbSystem().sLAPolicy.findFirst({
     where: {
       organizationId: issue.organizationId,
       issueCategory: issue.category,

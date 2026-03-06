@@ -2,27 +2,29 @@
 
 import { revalidatePath } from "next/cache";
 import { IssueStatus, WorkOrderPriority, WorkOrderStatus } from "@prisma/client";
+import { z } from "zod";
 
-import { auth } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { createEvent } from "@/lib/events";
 import { createCitizenNotification } from "@/lib/notifications";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
+import { requireStaffUser } from "@/lib/security/authorization";
+
+const issueIdSchema = z.object({
+  id: z.string().trim().min(1, "Missing issue id."),
+});
+
+const createWorkOrderSchema = z.object({
+  issueId: z.string().trim().min(1, "Missing issue id."),
+});
+
+const addCommentSchema = z.object({
+  issueId: z.string().trim().min(1, "Issue is required."),
+  message: z.string().trim().min(1, "Message is required."),
+});
 
 async function updateIssueStatus(id: string, status: IssueStatus, action: string) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const existing = await db().issueReport.findFirst({
     where: {
@@ -86,44 +88,23 @@ function mapIssuePriorityToWorkOrderPriority(priority: string | null): WorkOrder
 }
 
 export async function markInProgress(formData: FormData) {
-  const id = String(formData.get("id") ?? "").trim();
-  if (!id) {
-    throw new Error("Missing issue id.");
-  }
-
-  await updateIssueStatus(id, IssueStatus.IN_PROGRESS, "ISSUE_MARK_IN_PROGRESS");
+  const parsed = issueIdSchema.parse({ id: formData.get("id") });
+  await updateIssueStatus(parsed.id, IssueStatus.IN_PROGRESS, "ISSUE_MARK_IN_PROGRESS");
 }
 
 export async function markResolved(formData: FormData) {
-  const id = String(formData.get("id") ?? "").trim();
-  if (!id) {
-    throw new Error("Missing issue id.");
-  }
-
-  await updateIssueStatus(id, IssueStatus.RESOLVED, "ISSUE_MARK_RESOLVED");
+  const parsed = issueIdSchema.parse({ id: formData.get("id") });
+  await updateIssueStatus(parsed.id, IssueStatus.RESOLVED, "ISSUE_MARK_RESOLVED");
 }
 
 export async function createWorkOrderFromIssue(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
+  const user = await requireStaffUser("EDITOR");
 
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-
-  const issueId = String(formData.get("issueId") ?? "").trim();
-  if (!issueId) {
-    throw new Error("Missing issue id.");
-  }
+  const parsed = createWorkOrderSchema.parse({ issueId: formData.get("issueId") });
 
   const issue = await db().issueReport.findFirst({
     where: {
-      id: issueId,
+      id: parsed.issueId,
       organizationId: user.organizationId,
     },
     select: {
@@ -197,28 +178,16 @@ export async function createWorkOrderFromIssue(formData: FormData) {
 }
 
 export async function addStaffIssueComment(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
+  const user = await requireStaffUser("EDITOR");
 
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-
-  const issueId = String(formData.get("issueId") ?? "").trim();
-  const message = String(formData.get("message") ?? "").trim();
-
-  if (!issueId || !message) {
-    throw new Error("Issue and message are required.");
-  }
+  const parsed = addCommentSchema.parse({
+    issueId: formData.get("issueId"),
+    message: formData.get("message"),
+  });
 
   const issue = await db().issueReport.findFirst({
     where: {
-      id: issueId,
+      id: parsed.issueId,
       organizationId: user.organizationId,
     },
     select: {
@@ -234,7 +203,7 @@ export async function addStaffIssueComment(formData: FormData) {
   const comment = await db().issueComment.create({
     data: {
       issueId: issue.id,
-      message,
+      message: parsed.message,
       authorType: "STAFF",
     },
   });

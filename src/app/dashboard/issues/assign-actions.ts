@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { IssuePriority } from "@prisma/client";
+import { z } from "zod";
 
-import { auth } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
 import { createNotification, notifyOrganizationEditors } from "@/lib/notifications";
-import { hasDepartmentAccess, hasMinimumRole } from "@/lib/permissions";
+import { hasDepartmentAccess } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
+import { requireStaffUser } from "@/lib/security/authorization";
 
 type IssueAssignmentInput = {
   id: string;
@@ -17,18 +17,25 @@ type IssueAssignmentInput = {
   assignedUserId?: string | null;
 };
 
+const issueAssignmentSchema = z.object({
+  id: z.string().trim().min(1, "Issue id is required."),
+  assignedDepartmentId: z.string().trim().optional().nullable(),
+  priority: z.nativeEnum(IssuePriority).optional().nullable(),
+  assignedUserId: z.string().trim().optional().nullable(),
+});
+
+const updatePriorityFormSchema = z.object({
+  id: z.string().trim().min(1, "Missing issue id."),
+  priority: z.string().trim().optional(),
+});
+
+const reassignDepartmentFormSchema = z.object({
+  id: z.string().trim().min(1, "Missing issue id."),
+  assignedDepartmentId: z.string().trim().optional(),
+});
+
 async function requireIssueScope(id: string) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const issue = await db().issueReport.findFirst({
     where: {
@@ -61,13 +68,20 @@ function revalidateIssueViews() {
 }
 
 export async function assignIssue(input: IssueAssignmentInput) {
-  const { user, issue } = await requireIssueScope(input.id);
+  const parsedInput = issueAssignmentSchema.parse({
+    ...input,
+    assignedDepartmentId: input.assignedDepartmentId ?? null,
+    priority: input.priority ?? null,
+    assignedUserId: input.assignedUserId ?? null,
+  });
+
+  const { user, issue } = await requireIssueScope(parsedInput.id);
 
   let assignedDepartmentId: string | null = null;
-  if (input.assignedDepartmentId) {
+  if (parsedInput.assignedDepartmentId) {
     const department = await db().department.findFirst({
       where: {
-        id: input.assignedDepartmentId,
+        id: parsedInput.assignedDepartmentId,
         organizationId: user.organizationId,
       },
       select: { id: true },
@@ -83,7 +97,7 @@ export async function assignIssue(input: IssueAssignmentInput) {
     }
   }
 
-  const assignedUserId = input.assignedUserId ?? null;
+  const assignedUserId = parsedInput.assignedUserId ?? null;
   if (assignedUserId) {
     const assignedUser = await db().user.findFirst({
       where: {
@@ -133,29 +147,26 @@ export async function assignIssue(input: IssueAssignmentInput) {
 }
 
 export async function updatePriority(formData: FormData) {
-  const id = String(formData.get("id") ?? "").trim();
-  const rawPriority = String(formData.get("priority") ?? "").trim();
-  if (!id) {
-    throw new Error("Missing issue id.");
-  }
-
-  const priority = rawPriority ? (rawPriority as IssuePriority) : null;
+  const parsed = updatePriorityFormSchema.parse({
+    id: formData.get("id"),
+    priority: formData.get("priority"),
+  });
+  const priority = parsed.priority ? (parsed.priority as IssuePriority) : null;
   if (priority && !Object.values(IssuePriority).includes(priority)) {
     throw new Error("Invalid priority.");
   }
 
-  await assignIssue({ id, priority });
+  await assignIssue({ id: parsed.id, priority });
 }
 
 export async function reassignDepartment(formData: FormData) {
-  const id = String(formData.get("id") ?? "").trim();
-  const assignedDepartmentId = String(formData.get("assignedDepartmentId") ?? "").trim();
-  if (!id) {
-    throw new Error("Missing issue id.");
-  }
+  const parsed = reassignDepartmentFormSchema.parse({
+    id: formData.get("id"),
+    assignedDepartmentId: formData.get("assignedDepartmentId"),
+  });
 
   await assignIssue({
-    id,
-    assignedDepartmentId: assignedDepartmentId || null,
+    id: parsed.id,
+    assignedDepartmentId: parsed.assignedDepartmentId || null,
   });
 }

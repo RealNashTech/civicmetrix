@@ -8,9 +8,10 @@ import { randomUUID } from "crypto";
 
 import { NextResponse } from "next/server";
 
-import { AuthError } from "@/lib/auth/require-staff";
-import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { withApiObservability } from "@/lib/observability/http";
+import { requireStaffDocumentAccess } from "@/lib/policies/documents";
+import { AuthorizationError } from "@/lib/security/authorization";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 
 const ALLOWED_MIME_TYPES = new Map<string, string>([
@@ -20,16 +21,11 @@ const ALLOWED_MIME_TYPES = new Map<string, string>([
 ]);
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await enforceRateLimit("file upload", request);
 
-    const session = await auth();
-    const user = session?.user;
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-    }
+    const user = await requireStaffDocumentAccess();
 
     const formData = await request.formData();
     const file = formData.get("file");
@@ -88,9 +84,11 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof AuthorizationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     return NextResponse.json({ error: "Upload failed." }, { status: 500 });
   }
 }
+
+export const POST = withApiObservability("/api/documents/upload", "POST", handlePost);

@@ -3,16 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit";
-import { auth } from "@/lib/auth";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
-
-function requireEditorRole(role: AppRole) {
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-}
+import { requireStaffUser } from "@/lib/security/authorization";
 
 function parseNumber(raw: string, label: string) {
   const value = Number.parseFloat(raw);
@@ -31,14 +23,7 @@ function parseFiscalYear(raw: string) {
 }
 
 export async function createBudget(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const programId = String(formData.get("programId") ?? "").trim();
   const fiscalYearRaw = String(formData.get("fiscalYear") ?? "").trim();
@@ -91,14 +76,7 @@ export async function createBudget(formData: FormData) {
 }
 
 export async function updateBudget(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   const programId = String(formData.get("programId") ?? "").trim();
@@ -168,14 +146,7 @@ export async function updateBudget(formData: FormData) {
 }
 
 export async function deleteBudget(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {

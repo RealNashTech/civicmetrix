@@ -1,18 +1,13 @@
-const requests = new Map<string, number[]>();
+import { AuthorizationError } from "@/lib/policies/base";
+import { enforceRateLimitByIdentifier } from "@/lib/security/rate-limit";
 
-export function rateLimit(ip: string) {
-  const now = Date.now();
-  const windowMs = 60_000;
-
-  if (!requests.has(ip)) {
-    requests.set(ip, []);
-  }
-
-  const timestamps = (requests.get(ip) ?? []).filter((timestamp) => now - timestamp < windowMs);
-  timestamps.push(now);
-  requests.set(ip, timestamps);
-
-  if (timestamps.length > 60) {
-    throw new Error("Rate limit exceeded");
+export async function rateLimit(ip: string) {
+  try {
+    await enforceRateLimitByIdentifier("issue submit", ip || "unknown");
+  } catch (error) {
+    if (error instanceof AuthorizationError && error.status === 429) {
+      throw new Error("Rate limit exceeded");
+    }
+    throw error;
   }
 }

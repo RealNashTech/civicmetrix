@@ -3,15 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { GrantComplianceStatus, GrantStatus, Prisma } from "@prisma/client";
 
-import { auth } from "@/lib/auth";
-import { requireOrganization } from "@/lib/auth/require-org";
 import { createAuditLog } from "@/lib/audit";
 import { checkGrantComplianceAlerts } from "@/lib/alerts/checkGrantComplianceAlerts";
 import { createEvent } from "@/lib/events";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
+import { requireStaffUser } from "@/lib/security/authorization";
 import { grantCreateSchema } from "@/lib/validation/grants";
-import { AppRole } from "@/types/roles";
 
 function parseGrantStatus(rawStatus: string): GrantStatus {
   if (!Object.values(GrantStatus).includes(rawStatus as GrantStatus)) {
@@ -60,18 +57,8 @@ function parseGrantComplianceStatus(
 }
 
 export async function createGrant(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-  const organizationId = requireOrganization(session);
+  const user = await requireStaffUser("EDITOR");
+  const organizationId = user.organizationId;
 
   const name = String(formData.get("name") ?? "").trim();
   const statusRaw = String(formData.get("status") ?? "").trim();
@@ -198,18 +185,8 @@ export async function createGrant(formData: FormData) {
 }
 
 export async function updateGrant(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-  const organizationId = requireOrganization(session);
+  const user = await requireStaffUser("EDITOR");
+  const organizationId = user.organizationId;
 
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -346,18 +323,8 @@ export async function updateGrant(formData: FormData) {
 }
 
 export async function toggleGrantPublic(id: string) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-  const organizationId = requireOrganization(session);
+  const user = await requireStaffUser("EDITOR");
+  const organizationId = user.organizationId;
 
   const existing = await db().grant.findFirst({
     where: {
@@ -397,18 +364,8 @@ export async function toggleGrantPublic(id: string) {
 }
 
 export async function deleteGrant(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-  const organizationId = requireOrganization(session);
+  const user = await requireStaffUser("EDITOR");
+  const organizationId = user.organizationId;
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {

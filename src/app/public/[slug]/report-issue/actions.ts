@@ -12,13 +12,12 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
-import { AuthError } from "@/lib/auth/require-staff";
 import { createAuditLog } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { createEvent } from "@/lib/events";
 import { db } from "@/lib/db";
+import { AuthorizationError } from "@/lib/policies/base";
 import { rateLimit } from "@/middleware/rate-limit";
-import { enforceRateLimitByIdentifier } from "@/lib/security/rate-limit";
 
 type CreateIssueReportInput = {
   slug: string;
@@ -37,12 +36,13 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
   const forwardedFor = headerStore.get("x-forwarded-for");
   const requestIp = forwardedFor?.split(",")[0]?.trim() || headerStore.get("x-real-ip") || "unknown";
 
-  rateLimit(requestIp);
-
   try {
-    await enforceRateLimitByIdentifier("issue submit", requestIp);
+    await rateLimit(requestIp);
   } catch (error) {
-    if (error instanceof AuthError && error.status === 429) {
+    if (
+      (error instanceof AuthorizationError && error.status === 429) ||
+      (error instanceof Error && error.message === "Rate limit exceeded")
+    ) {
       throw new Error("Too many issue submissions. Please try again shortly.");
     }
     throw error;

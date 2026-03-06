@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 
 import { compare, hash } from "bcryptjs";
 
-import { db } from "@/lib/db";
+import { db, dbSystem } from "@/lib/db";
 
 const API_TOKEN_RANDOM_BYTES = 48;
 const API_TOKEN_HASH_ROUNDS = 12;
@@ -73,7 +73,7 @@ export async function validateApiToken(token: string | null | undefined) {
 
   const tokenPrefix = token.slice(0, 8);
   const now = new Date();
-  const candidates = await db().apiToken.findMany({
+  const candidates = await dbSystem().apiToken.findMany({
     where: {
       tokenPrefix,
       revokedAt: null,
@@ -99,7 +99,7 @@ export async function validateApiToken(token: string | null | undefined) {
       continue;
     }
 
-    const updated = await db().apiToken.update({
+    const updated = await dbSystem().apiToken.update({
       where: { id: candidate.id },
       data: { lastUsedAt: now },
       select: {

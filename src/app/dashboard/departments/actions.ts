@@ -3,26 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit";
-import { auth } from "@/lib/auth";
-import { hasDepartmentAccess, hasMinimumRole } from "@/lib/permissions";
+import { hasDepartmentAccess } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
-
-function requireEditorRole(role: AppRole) {
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-}
+import { requireStaffUser } from "@/lib/security/authorization";
 
 export async function createDepartment(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) {
@@ -54,14 +40,7 @@ export async function createDepartment(formData: FormData) {
 }
 
 export async function updateDepartment(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -120,14 +99,7 @@ export async function updateDepartment(formData: FormData) {
 }
 
 export async function deleteDepartment(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  requireEditorRole(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {
@@ -151,8 +123,8 @@ export async function deleteDepartment(formData: FormData) {
     throw new Error("No department access.");
   }
 
-  await db().$transaction([
-    db().kPI.updateMany({
+  await db().$transaction(async (tx) => {
+    await tx.kPI.updateMany({
       where: {
         organizationId: user.organizationId,
         departmentId: existing.id,
@@ -160,8 +132,9 @@ export async function deleteDepartment(formData: FormData) {
       data: {
         departmentId: null,
       },
-    }),
-    db().grant.updateMany({
+    });
+
+    await tx.grant.updateMany({
       where: {
         organizationId: user.organizationId,
         departmentId: existing.id,
@@ -169,11 +142,12 @@ export async function deleteDepartment(formData: FormData) {
       data: {
         departmentId: null,
       },
-    }),
-    db().department.delete({
+    });
+
+    await tx.department.delete({
       where: { id: existing.id },
-    }),
-  ]);
+    });
+  });
 
   await createAuditLog({
     action: "DEPARTMENT_DELETE",

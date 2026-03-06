@@ -1,9 +1,11 @@
 import { notifyOrganizationEditors } from "@/lib/notifications";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
+
+const BATCH_SIZE = 500;
 
 export async function runIssueSlaWorker() {
   const now = new Date();
-  const breachedIssues = await db().issueReport.findMany({
+  const breachedIssues = await dbSystem().issueReport.findMany({
     where: {
       slaBreached: false,
       status: {
@@ -28,42 +30,74 @@ export async function runIssueSlaWorker() {
       organizationId: true,
       departmentId: true,
     },
+    take: BATCH_SIZE,
   });
 
-  for (const issue of breachedIssues) {
-    const title = `Issue SLA breached: ${issue.title}`;
-    const existing = await db().alert.findFirst({
-      where: {
+  if (breachedIssues.length === 0) {
+    return;
+  }
+
+  const existingAlerts = await dbSystem().alert.findMany({
+    where: {
+      resolvedAt: null,
+      OR: breachedIssues.map((issue) => ({
         organizationId: issue.organizationId,
+        title: `Issue SLA breached: ${issue.title}`,
+      })),
+    },
+    select: {
+      organizationId: true,
+      title: true,
+    },
+  });
+  const existingAlertKeys = new Set(existingAlerts.map((alert) => `${alert.organizationId}:${alert.title}`));
+
+  const newAlerts = breachedIssues
+    .map((issue) => {
+      const title = `Issue SLA breached: ${issue.title}`;
+      const key = `${issue.organizationId}:${title}`;
+      if (existingAlertKeys.has(key)) {
+        return null;
+      }
+      return {
+        organizationId: issue.organizationId,
+        departmentId: issue.departmentId,
         title,
-        resolvedAt: null,
-      },
-      select: { id: true },
+        message: `Issue ${issue.id} has breached SLA thresholds.`,
+        severity: "CRITICAL" as const,
+      };
+    })
+    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+
+  if (newAlerts.length > 0) {
+    await dbSystem().alert.createMany({
+      data: newAlerts,
+      skipDuplicates: true,
     });
+  }
 
-    if (!existing) {
-      await db().alert.create({
-        data: {
-          organizationId: issue.organizationId,
-          departmentId: issue.departmentId,
-          title,
-          message: `Issue ${issue.id} has breached SLA thresholds.`,
-          severity: "CRITICAL",
-        },
-      });
+  const breachedIds = breachedIssues.map((issue) => issue.id);
+  await dbSystem().issueReport.updateMany({
+    where: {
+      id: { in: breachedIds },
+      slaBreached: false,
+    },
+    data: {
+      slaBreached: true,
+    },
+  });
 
-      await notifyOrganizationEditors(
-        issue.organizationId,
-        `SLA breached for issue ${issue.id}`,
-        "/dashboard/issues",
-      );
+  const notifiedOrganizations = new Set<string>();
+  for (const issue of breachedIssues) {
+    if (notifiedOrganizations.has(issue.organizationId)) {
+      continue;
     }
-
-    await db().issueReport.update({
-      where: { id: issue.id },
-      data: {
-        slaBreached: true,
-      },
-    });
+    notifiedOrganizations.add(issue.organizationId);
+    await notifyOrganizationEditors(
+      issue.organizationId,
+      "SLA breaches detected for open issues",
+      "/dashboard/issues",
+      dbSystem(),
+    );
   }
 }

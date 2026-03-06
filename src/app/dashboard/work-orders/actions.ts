@@ -3,11 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { WorkOrderStatus } from "@prisma/client";
 
-import { auth } from "@/lib/auth";
 import { createAuditLog } from "@/lib/audit";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
+import { requireStaffUser } from "@/lib/security/authorization";
 
 const ALLOWED_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
   WorkOrderStatus.OPEN,
@@ -17,17 +15,7 @@ const ALLOWED_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
 ];
 
 export async function updateWorkOrderStatus(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   const statusRaw = String(formData.get("status") ?? "").trim();
@@ -70,17 +58,7 @@ export async function updateWorkOrderStatus(formData: FormData) {
 }
 
 export async function createMaintenanceSchedule(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  const role = user.role as AppRole;
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
+  const user = await requireStaffUser("EDITOR");
 
   const assetId = String(formData.get("assetId") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();

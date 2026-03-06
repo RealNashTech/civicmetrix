@@ -1,5 +1,5 @@
 import { notifyOrganizationEditors } from "@/lib/notifications";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 export async function runGrantDeadlineWorker() {
   console.log("[worker] grant deadline worker executed", new Date());
@@ -8,7 +8,7 @@ export async function runGrantDeadlineWorker() {
   const fourteenDaysFromNow = new Date();
   fourteenDaysFromNow.setDate(now.getDate() + 14);
 
-  const upcomingDeadlines = await db().grant.findMany({
+  const upcomingDeadlines = await dbSystem().grant.findMany({
     where: {
       organizationId: {
         not: "",
@@ -45,7 +45,7 @@ export async function runGrantDeadlineWorker() {
   for (const [organizationId, grants] of Object.entries(grantsByOrganization)) {
     for (const grant of grants) {
       const title = `Grant application due soon: ${grant.name}`;
-      const existing = await db().alert.findFirst({
+      const existing = await dbSystem().alert.findFirst({
         where: {
           organizationId: grant.organizationId,
           title,
@@ -58,7 +58,7 @@ export async function runGrantDeadlineWorker() {
         continue;
       }
 
-      await db().alert.create({
+      await dbSystem().alert.create({
         data: {
           organizationId: grant.organizationId,
           departmentId: grant.departmentId,
@@ -73,6 +73,7 @@ export async function runGrantDeadlineWorker() {
         organizationId,
         `Grant deadline in 14 days: ${grant.name}`,
         "/dashboard/grants/pipeline",
+        dbSystem(),
       );
     }
   }

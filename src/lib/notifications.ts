@@ -20,8 +20,9 @@ export async function notifyOrganizationEditors(
   organizationId: string,
   message: string,
   link?: string,
+  client = db(),
 ) {
-  const recipients = await db().user.findMany({
+  const recipients = await client.user.findMany({
     where: {
       organizationId,
       role: {
@@ -35,7 +36,7 @@ export async function notifyOrganizationEditors(
     return;
   }
 
-  await db().notification.createMany({
+  await client.notification.createMany({
     data: recipients.map((recipient) => ({
       userId: recipient.id,
       message,

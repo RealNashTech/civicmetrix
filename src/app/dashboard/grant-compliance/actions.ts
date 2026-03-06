@@ -3,26 +3,11 @@
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit";
-import { auth } from "@/lib/auth";
-import { hasMinimumRole } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
-
-function ensureEditor(role: AppRole) {
-  if (!hasMinimumRole(role, "EDITOR")) {
-    throw new Error("Forbidden.");
-  }
-}
+import { requireStaffUser } from "@/lib/security/authorization";
 
 export async function createMilestone(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  ensureEditor(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const grantId = String(formData.get("grantId") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -71,14 +56,7 @@ export async function createMilestone(formData: FormData) {
 }
 
 export async function createDeliverable(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  ensureEditor(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const milestoneId = String(formData.get("milestoneId") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
@@ -120,14 +98,7 @@ export async function createDeliverable(formData: FormData) {
 }
 
 export async function toggleMilestoneCompletion(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  ensureEditor(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {
@@ -166,14 +137,7 @@ export async function toggleMilestoneCompletion(formData: FormData) {
 }
 
 export async function toggleDeliverableCompletion(formData: FormData) {
-  const session = await auth();
-  const user = session?.user;
-
-  if (!user) {
-    throw new Error("Unauthorized.");
-  }
-
-  ensureEditor(user.role as AppRole);
+  const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   if (!id) {

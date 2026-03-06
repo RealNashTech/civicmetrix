@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { calculateIssueSLA } from "@/lib/sla-engine";
 
 const EVENT_BATCH_SIZE = 100;
@@ -17,7 +17,7 @@ async function handleEvent(event: {
         break;
       }
 
-      const issue = await db().issueReport.findUnique({
+      const issue = await dbSystem().issueReport.findUnique({
         where: { id: event.entityId },
         select: {
           id: true,
@@ -40,7 +40,7 @@ async function handleEvent(event: {
         break;
       }
 
-      await db().issueReport.update({
+      await dbSystem().issueReport.updateMany({
         where: {
           id: issue.id,
           organizationId: issue.organizationId,
@@ -57,7 +57,7 @@ async function handleEvent(event: {
 }
 
 export async function processEventBatch(batchSize = EVENT_BATCH_SIZE) {
-  const events = await db().event.findMany({
+  const events = await dbSystem().event.findMany({
     where: { processed: false },
     orderBy: { createdAt: "asc" },
     take: batchSize,
@@ -74,10 +74,18 @@ export async function processEventBatch(batchSize = EVENT_BATCH_SIZE) {
     return 0;
   }
 
+  const processedIds: string[] = [];
   for (const event of events) {
     await handleEvent(event);
-    await db().event.update({
-      where: { id: event.id },
+    processedIds.push(event.id);
+  }
+
+  if (processedIds.length > 0) {
+    await dbSystem().event.updateMany({
+      where: {
+        id: { in: processedIds },
+        processed: false,
+      },
       data: {
         processed: true,
         processedAt: new Date(),
