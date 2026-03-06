@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { TopNav } from "@/components/layout/top-nav";
 
 import "./globals.css";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

@@ -25,7 +25,6 @@ export const eventProcessingQueue = connection
         },
         removeOnComplete: 100,
         removeOnFail: 200,
-        timeout: 120_000,
       },
     })
   : null;
@@ -40,7 +39,6 @@ export const grantRemindersQueue = connection
         },
         removeOnComplete: 100,
         removeOnFail: 200,
-        timeout: 120_000,
       },
     })
   : null;
@@ -55,7 +53,6 @@ export const issueSlaQueue = connection
         },
         removeOnComplete: 100,
         removeOnFail: 200,
-        timeout: 120_000,
       },
     })
   : null;
@@ -70,7 +67,6 @@ export const maintenanceSchedulerQueue = connection
         },
         removeOnComplete: 100,
         removeOnFail: 200,
-        timeout: 120_000,
       },
     })
   : null;
@@ -85,7 +81,6 @@ export const civicIntelligenceQueue = connection
         },
         removeOnComplete: 100,
         removeOnFail: 200,
-        timeout: 120_000,
       },
     })
   : null;

@@ -15,7 +15,6 @@ import { runSpatialClusterWorker } from "@/workers/intelligence/spatial-cluster-
 import { runIssueSlaWorker } from "@/workers/issue-sla-worker";
 import { runMaintenanceSchedulerWorker } from "@/workers/maintenance-scheduler-worker";
 
-const JOB_TIMEOUT_MS = 120_000;
 const JOB_ATTEMPTS = 3;
 
 async function pushToDeadLetterQueue(deadLetterQueue: Queue, workerType: string, job: Job | undefined, error: Error) {
@@ -130,7 +129,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -147,7 +145,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -164,7 +161,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -181,7 +177,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -198,7 +193,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -215,7 +209,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -232,7 +225,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -249,7 +241,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -266,7 +257,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
@@ -283,7 +273,6 @@ async function scheduleRepeatableJobs(
         type: "exponential",
         delay: 1_000,
       },
-      timeout: JOB_TIMEOUT_MS,
       removeOnComplete: 50,
       removeOnFail: 50,
     },
