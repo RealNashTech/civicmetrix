@@ -1,7 +1,7 @@
 import { InsightSeverity, InsightType, Prisma } from "@prisma/client";
 
 import { createInsight } from "@/lib/insights/create-insight";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 function average(values: number[]) {
   if (values.length === 0) {
@@ -25,7 +25,7 @@ export async function runKpiTrendWorker() {
   const last7Start = new Date(now);
   last7Start.setDate(last7Start.getDate() - 7);
 
-  const kpis = await db().kPI.findMany({
+  const kpis = await dbSystem().kPI.findMany({
     select: {
       id: true,
       name: true,
@@ -35,7 +35,7 @@ export async function runKpiTrendWorker() {
   });
 
   for (const kpi of kpis) {
-    const existing = await db().insight.findFirst({
+    const existing = await dbSystem().insight.findFirst({
       where: {
         organizationId: kpi.organizationId,
         type: InsightType.KPI_TREND_ALERT,
@@ -50,7 +50,7 @@ export async function runKpiTrendWorker() {
       continue;
     }
 
-    const history = await db().kPIHistory.findMany({
+    const history = await dbSystem().kPIHistory.findMany({
       where: {
         kpiId: kpi.id,
         recordedAt: {
@@ -115,6 +115,6 @@ export async function runKpiTrendWorker() {
       sourceEntity: "KPI",
       sourceId: kpi.id,
       metadata,
-    });
+    }, dbSystem());
   }
 }

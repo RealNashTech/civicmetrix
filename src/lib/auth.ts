@@ -1,11 +1,14 @@
 import { compare } from "bcryptjs";
 import { getServerSession, NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { headers } from "next/headers";
 import { z } from "zod";
 
 import { validateEnv } from "@/lib/config/env";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
+import { setObservabilityContext } from "@/lib/observability/context";
 import { consumeLoginRateLimit, penalizeLoginRateLimit } from "@/lib/security/login-rate-limit";
+import { setTenantContext } from "@/lib/tenant-context";
 
 validateEnv();
 
@@ -80,7 +83,7 @@ export const authOptions: NextAuthOptions = {
 
         const { email, password, organizationSlug } = parsed.data;
 
-        const user = await db().user.findFirst({
+        const user = await dbSystem().user.findFirst({
           where: {
             email: email.toLowerCase(),
             organization: {
@@ -139,7 +142,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         const { email, password, organizationSlug } = parsed.data;
-        const citizen = await db().citizen.findFirst({
+        const citizen = await dbSystem().citizen.findFirst({
           where: {
             email: email.toLowerCase(),
             organization: {
@@ -206,6 +209,40 @@ export const authOptions: NextAuthOptions = {
   },
 };
 
-export function auth() {
-  return getServerSession(authOptions);
+export async function auth() {
+  try {
+    const headerStore = await headers();
+    const requestId = headerStore.get("x-request-id");
+    if (requestId) {
+      setObservabilityContext({
+        requestId,
+        tenantId: headerStore.get("x-civicmetrix-tenant") ?? undefined,
+        route:
+          headerStore.get("next-url") ??
+          headerStore.get("x-invoke-path") ??
+          undefined,
+      });
+    }
+  } catch {
+    // No request header context available (e.g. worker/background process).
+  }
+
+  const session = await getServerSession(authOptions);
+  const organizationId = session?.user?.organizationId;
+
+  if (organizationId && session?.user?.id && session.user.userType !== "citizen") {
+    setTenantContext({
+      organizationId,
+      principalType: "staff",
+      principalId: session.user.id,
+      role: session.user.role,
+    });
+
+    setObservabilityContext({
+      tenantId: organizationId,
+      userId: session.user.id,
+    });
+  }
+
+  return session;
 }

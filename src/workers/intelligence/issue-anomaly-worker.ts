@@ -1,7 +1,7 @@
 import { InsightType, Prisma } from "@prisma/client";
 
 import { createInsight } from "@/lib/insights/create-insight";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type CountByOrganization = {
   organizationId: string;
@@ -27,7 +27,7 @@ export async function runIssueAnomalyWorker() {
   const previousWindowStart = getWindowStart(14);
 
   const [last7Raw, previous7Raw] = await Promise.all([
-    db().issueReport.groupBy({
+    dbSystem().issueReport.groupBy({
       by: ["organizationId"],
       where: {
         createdAt: {
@@ -39,7 +39,7 @@ export async function runIssueAnomalyWorker() {
         _all: true,
       },
     }),
-    db().issueReport.groupBy({
+    dbSystem().issueReport.groupBy({
       by: ["organizationId"],
       where: {
         createdAt: {
@@ -85,6 +85,6 @@ export async function runIssueAnomalyWorker() {
       description: `Issue volume increased by ${Math.round(increasePercent)}% in the last 7 days compared to the previous 7-day period.`,
       sourceEntity: "IssueReport",
       metadata,
-    });
+    }, dbSystem());
   }
 }

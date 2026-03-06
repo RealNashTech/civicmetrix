@@ -1,13 +1,13 @@
 import { InsightSeverity, InsightType, Prisma } from "@prisma/client";
 
 import { createInsight } from "@/lib/insights/create-insight";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 export async function runGrantRiskWorker() {
   const now = new Date();
 
   const [overdueGrants, overdueMilestones] = await Promise.all([
-    db().grant.findMany({
+    dbSystem().grant.findMany({
       where: {
         nextReportDue: {
           lt: now,
@@ -20,7 +20,7 @@ export async function runGrantRiskWorker() {
         nextReportDue: true,
       },
     }),
-    db().grantMilestone.findMany({
+    dbSystem().grantMilestone.findMany({
       where: {
         completed: false,
         dueDate: {
@@ -43,7 +43,7 @@ export async function runGrantRiskWorker() {
   ]);
 
   for (const grant of overdueGrants) {
-    const existing = await db().insight.findFirst({
+    const existing = await dbSystem().insight.findFirst({
       where: {
         organizationId: grant.organizationId,
         type: InsightType.GRANT_RISK,
@@ -72,11 +72,11 @@ export async function runGrantRiskWorker() {
       sourceEntity: "Grant",
       sourceId: grant.id,
       metadata,
-    });
+    }, dbSystem());
   }
 
   for (const milestone of overdueMilestones) {
-    const existing = await db().insight.findFirst({
+    const existing = await dbSystem().insight.findFirst({
       where: {
         organizationId: milestone.grant.organizationId,
         type: InsightType.GRANT_RISK,
@@ -106,6 +106,6 @@ export async function runGrantRiskWorker() {
       sourceEntity: "GrantMilestone",
       sourceId: milestone.id,
       metadata,
-    });
+    }, dbSystem());
   }
 }

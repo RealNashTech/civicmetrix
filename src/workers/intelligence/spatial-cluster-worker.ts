@@ -1,7 +1,7 @@
 import { InsightSeverity, InsightType, Prisma } from "@prisma/client";
 
 import { createInsight } from "@/lib/insights/create-insight";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 const RADIUS_METERS = 800;
 const MIN_CLUSTER_SIZE = 8;
@@ -30,7 +30,7 @@ export async function runSpatialClusterWorker() {
   const sevenDaysAgo = new Date(now);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const clusters = await db().$queryRaw<ClusterRow[]>`
+  const clusters = await dbSystem().$queryRaw<ClusterRow[]>`
     WITH recent_issues AS (
       SELECT
         "id",
@@ -71,7 +71,7 @@ export async function runSpatialClusterWorker() {
   const windowKey = sevenDaysAgo.toISOString().slice(0, 10);
 
   for (const cluster of clusters) {
-    const existing = await db().insight.findFirst({
+    const existing = await dbSystem().insight.findFirst({
       where: {
         organizationId: cluster.organizationId,
         type: InsightType.SERVICE_CLUSTER,
@@ -105,6 +105,6 @@ export async function runSpatialClusterWorker() {
       sourceEntity: "IssueReportCluster",
       sourceId,
       metadata,
-    });
+    }, dbSystem());
   }
 }

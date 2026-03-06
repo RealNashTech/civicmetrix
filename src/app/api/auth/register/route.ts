@@ -2,8 +2,9 @@ import { hash } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { AuthError } from "@/lib/auth/require-staff";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
+import { withApiObservability } from "@/lib/observability/http";
+import { AuthorizationError } from "@/lib/policies/base";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 
 const registerSchema = z.object({
@@ -14,7 +15,7 @@ const registerSchema = z.object({
   organizationSlug: z.string().min(2),
 });
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await enforceRateLimit("auth/register", request);
 
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     const normalizedSlug = organizationSlug.trim().toLowerCase();
     const normalizedEmail = email.trim().toLowerCase();
 
-    const existingOrg = await db().organization.findUnique({
+    const existingOrg = await dbSystem().organization.findUnique({
       where: { slug: normalizedSlug },
     });
 
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
 
     const passwordHash = await hash(password, 12);
 
-    await db().$transaction(async (tx) => {
+    await dbSystem().$transaction(async (tx) => {
       const organization = await tx.organization.create({
         data: {
           name: organizationName,
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof AuthorizationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
@@ -76,3 +77,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withApiObservability("/api/auth/register", "POST", handlePost);

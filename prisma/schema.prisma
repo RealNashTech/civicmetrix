@@ -303,6 +303,7 @@ model Grant {
   @@index([status])
   @@index([organizationId, status])
   @@index([organizationId, applicationDeadline])
+  @@index([nextReportDue])
   @@index([dashboardId])
   @@index([departmentId])
   @@index([programId])
@@ -496,6 +497,7 @@ model IssueReport {
   @@index([citizenId])
   @@index([status])
   @@index([priority])
+  @@index([slaBreached, status, slaResponseDueAt, slaResolutionDueAt])
 }
 
 model SLAPolicy {
@@ -685,6 +687,7 @@ model Event {
   @@index([type])
   @@index([processed])
   @@index([createdAt])
+  @@index([processed, createdAt])
 }
 
 model Insight {

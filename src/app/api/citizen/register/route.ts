@@ -2,8 +2,9 @@ import { hash } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { AuthError } from "@/lib/auth/require-staff";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
+import { withApiObservability } from "@/lib/observability/http";
+import { AuthorizationError } from "@/lib/policies/base";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
 
 const citizenRegisterSchema = z.object({
@@ -13,7 +14,7 @@ const citizenRegisterSchema = z.object({
   organizationSlug: z.string().min(2),
 });
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   try {
     await enforceRateLimit("auth/register", request);
 
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
     const normalizedSlug = organizationSlug.trim().toLowerCase();
     const normalizedEmail = email.trim().toLowerCase();
 
-    const organization = await db().organization.findUnique({
+    const organization = await dbSystem().organization.findUnique({
       where: { slug: normalizedSlug },
       select: { id: true },
     });
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Organization not found." }, { status: 404 });
     }
 
-    const existing = await db().citizen.findFirst({
+    const existing = await dbSystem().citizen.findFirst({
       where: {
         organizationId: organization.id,
         email: normalizedEmail,
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 
     const passwordHash = await hash(password, 12);
 
-    await db().citizen.create({
+    await dbSystem().citizen.create({
       data: {
         name: name?.trim() || null,
         email: normalizedEmail,
@@ -62,10 +63,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {
-    if (error instanceof AuthError) {
+    if (error instanceof AuthorizationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
 
     return NextResponse.json({ error: "Registration failed." }, { status: 500 });
   }
 }
+
+export const POST = withApiObservability("/api/citizen/register", "POST", handlePost);

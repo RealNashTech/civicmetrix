@@ -2,6 +2,8 @@ import { InsightSeverity, InsightType, Prisma } from "@prisma/client";
 
 import { db } from "@/lib/db";
 
+type DbClient = ReturnType<typeof db>;
+
 type CreateInsightInput = {
   organizationId: string;
   type: InsightType;
@@ -48,12 +50,12 @@ function resolveSeverity(
   return InsightSeverity.INFO;
 }
 
-export async function createInsight(input: CreateInsightInput) {
+export async function createInsight(input: CreateInsightInput, client: DbClient = db()) {
   const duplicateWindowHours = input.duplicateWindowHours ?? 24;
   const dedupeSince = new Date(Date.now() - duplicateWindowHours * 60 * 60 * 1000);
   const normalizedSeverity = resolveSeverity(input.severity, input.metadata);
 
-  const existing = await db().insight.findFirst({
+  const existing = await client.insight.findFirst({
     where: {
       organizationId: input.organizationId,
       type: input.type,
@@ -72,7 +74,7 @@ export async function createInsight(input: CreateInsightInput) {
     return existing;
   }
 
-  return db().insight.create({
+  return client.insight.create({
     data: {
       organizationId: input.organizationId,
       type: input.type,
