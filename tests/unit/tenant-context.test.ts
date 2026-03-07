@@ -89,4 +89,19 @@ describe("tenant context", () => {
 
     expect([staff.principalType, apiToken.principalType]).toEqual(["staff", "api-token"]);
   });
+
+  it("runWithTenantContext propagates context only within scope", () => {
+    const scoped = runWithTenantContext(
+      {
+        organizationId: "org_scoped",
+        principalType: "staff",
+        principalId: "user_scoped",
+        role: "EDITOR",
+      },
+      () => getTenantContext(),
+    );
+
+    expect(scoped?.organizationId).toBe("org_scoped");
+    expect(getTenantContext()?.organizationId).not.toBe("org_scoped");
+  });
 });

@@ -69,8 +69,18 @@ describe("db tenant enforcement", () => {
   })
 
   it("request execution without tenant context throws", async () => {
-    await expect(db().user.findMany({ where: {} })).rejects.toThrow("Tenant context not set")
+    await expect(db().user.findMany({ where: {} })).rejects.toThrow("Tenant context required for db() access")
     expect(transactionMock).not.toHaveBeenCalled()
+  })
+
+  it("db() executes when tenant is propagated through request headers", async () => {
+    getTenantIdFromRequestHeadersMock.mockResolvedValue("org_from_header")
+
+    await db().user.findMany({ where: {} })
+
+    expect(transactionMock).toHaveBeenCalledTimes(1)
+    expect(txExecuteRawMock).toHaveBeenCalledTimes(1)
+    expect(txUserFindManyMock).toHaveBeenCalledWith({ where: {} })
   })
 
   it("db() executes when trusted tenant context exists", async () => {
