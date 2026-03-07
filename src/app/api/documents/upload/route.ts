@@ -5,10 +5,11 @@ import path from "path";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import { randomUUID } from "crypto";
-
-import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { db } from "@/lib/db";
+import { apiError } from "@/lib/api/error-response";
+import { apiSuccess } from "@/lib/api/success-response";
 import { withApiObservability } from "@/lib/observability/http";
 import { requireStaffDocumentAccess } from "@/lib/policies/documents";
 import { AuthorizationError } from "@/lib/security/authorization";
@@ -20,6 +21,12 @@ const ALLOWED_MIME_TYPES = new Map<string, string>([
   ["application/pdf", ".pdf"],
 ]);
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const uploadInputSchema = z.object({
+  name: z.string().min(1),
+  type: z.string().min(1),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+});
 
 async function handlePost(request: Request) {
   try {
@@ -35,20 +42,25 @@ async function handlePost(request: Request) {
     const entityId = String(formData.get("entityId") ?? "").trim();
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "Missing file." }, { status: 400 });
+      return apiError("Missing file.", 400);
     }
-
-    if (!name || !type) {
-      return NextResponse.json({ error: "Name and type are required." }, { status: 400 });
+    const parsedInput = uploadInputSchema.safeParse({
+      name,
+      type,
+      entityType: entityType || undefined,
+      entityId: entityId || undefined,
+    });
+    if (!parsedInput.success) {
+      return apiError("Name and type are required.", 400);
     }
 
     const extension = ALLOWED_MIME_TYPES.get(file.type);
     if (!extension) {
-      return NextResponse.json({ error: "Unsupported file type." }, { status: 400 });
+      return apiError("Unsupported file type.", 400);
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      return NextResponse.json({ error: "File exceeds 10MB size limit." }, { status: 400 });
+      return apiError("File exceeds 10MB size limit.", 400);
     }
 
     const uploadDir = path.join(process.cwd(), "data", "uploads", user.organizationId);
@@ -76,18 +88,18 @@ async function handlePost(request: Request) {
       },
     });
 
-    return NextResponse.json(
+    return apiSuccess(
       {
         fileId: created.id,
         fileUrl: `/api/documents/${created.id}`,
       },
-      { status: 201 },
+      201,
     );
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiError(error.message, error.status);
     }
-    return NextResponse.json({ error: "Upload failed." }, { status: 500 });
+    return apiError("Upload failed.", 500);
   }
 }
 

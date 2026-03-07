@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-
+import { apiError } from "@/lib/api/error-response";
+import { apiSuccess } from "@/lib/api/success-response";
 import { getInfrastructureHealth } from "@/lib/asset-health";
 import { getCityHealthScore } from "@/lib/city-health";
 import { getCivicInsights } from "@/lib/civic-insights";
@@ -9,6 +9,7 @@ import { getOrganizationKpiTrendHealth } from "@/lib/kpi-trends";
 import { db } from "@/lib/db";
 import { withApiObservability } from "@/lib/observability/http";
 import { AuthorizationError, authorizeStaffOrApiScope } from "@/lib/security/authorization";
+import { parsePaginationFromSearchParams } from "@/lib/validation/http";
 
 function asPercent(part: number, total: number) {
   if (total <= 0) {
@@ -25,22 +26,22 @@ async function handleGet(request: Request) {
     organizationId = context.organizationId;
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiError(error.message, error.status);
     }
-    return NextResponse.json({ error: "Authorization failed." }, { status: 500 });
+    return apiError("Authorization failed.", 500);
   }
 
   const url = new URL(request.url);
-  const issuePage = Math.max(1, Number.parseInt(url.searchParams.get("issuePage") ?? "1", 10) || 1);
-  const issuePageSize = Math.min(
-    200,
-    Math.max(1, Number.parseInt(url.searchParams.get("issuePageSize") ?? "50", 10) || 50),
+  const issuePaging = parsePaginationFromSearchParams(url.searchParams, "issuePage", "issuePageSize");
+  const workOrderPaging = parsePaginationFromSearchParams(
+    url.searchParams,
+    "workOrderPage",
+    "workOrderPageSize",
   );
-  const workOrderPage = Math.max(1, Number.parseInt(url.searchParams.get("workOrderPage") ?? "1", 10) || 1);
-  const workOrderPageSize = Math.min(
-    200,
-    Math.max(1, Number.parseInt(url.searchParams.get("workOrderPageSize") ?? "50", 10) || 50),
-  );
+  const issuePage = issuePaging.page;
+  const issuePageSize = issuePaging.pageSize;
+  const workOrderPage = workOrderPaging.page;
+  const workOrderPageSize = workOrderPaging.pageSize;
 
   const cacheKey = [
     "api:city-operations",
@@ -318,7 +319,7 @@ async function handleGet(request: Request) {
     } as const;
   });
 
-  return NextResponse.json(payload);
+  return apiSuccess(payload);
 }
 
 export const GET = withApiObservability("/api/city/operations", "GET", handleGet);

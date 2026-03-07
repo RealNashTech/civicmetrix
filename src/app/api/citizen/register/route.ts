@@ -1,7 +1,8 @@
 import { hash } from "bcryptjs";
-import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { apiError } from "@/lib/api/error-response";
+import { apiSuccess } from "@/lib/api/success-response";
 import { dbSystem } from "@/lib/db";
 import { withApiObservability } from "@/lib/observability/http";
 import { AuthorizationError } from "@/lib/policies/base";
@@ -22,7 +23,7 @@ async function handlePost(request: Request) {
     const parsed = citizenRegisterSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid registration input." }, { status: 400 });
+      return apiError("Invalid registration input.", 400);
     }
 
     const { name, email, password, organizationSlug } = parsed.data;
@@ -35,7 +36,7 @@ async function handlePost(request: Request) {
     });
 
     if (!organization) {
-      return NextResponse.json({ error: "Organization not found." }, { status: 404 });
+      return apiError("Organization not found.", 404);
     }
 
     const existing = await dbSystem().citizen.findFirst({
@@ -47,7 +48,7 @@ async function handlePost(request: Request) {
     });
 
     if (existing) {
-      return NextResponse.json({ error: "Citizen account already exists for this email." }, { status: 409 });
+      return apiError("Citizen account already exists for this email.", 409);
     }
 
     const passwordHash = await hash(password, 12);
@@ -61,13 +62,13 @@ async function handlePost(request: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true }, { status: 201 });
+    return apiSuccess({ ok: true });
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiError(error.message, error.status);
     }
 
-    return NextResponse.json({ error: "Registration failed." }, { status: 500 });
+    return apiError("Registration failed.", 500);
   }
 }
 

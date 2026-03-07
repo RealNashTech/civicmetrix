@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-
+import { apiError } from "@/lib/api/error-response";
 import {
   deadLetterQueue,
   civicIntelligenceQueue,
@@ -54,7 +53,7 @@ async function getMetrics(request: Request) {
     Promise.resolve(getMetricsSnapshot()),
   ]);
 
-  return NextResponse.json({
+  return Response.json({
     generatedAt: new Date().toISOString(),
     workerQueueSizes: queueSizes,
     dbQueryLatency: snapshot.db,
@@ -68,8 +67,8 @@ export const GET = withApiObservability("/api/internal/metrics", "GET", async (r
     return await getMetrics(request);
   } catch (error) {
     if (error instanceof AuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return apiError(error.message, error.status);
     }
-    return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    return apiError("Internal server error.", 500);
   }
 });
