@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
 
 export const revalidate = 300;
@@ -14,8 +14,11 @@ export default async function PublicDepartmentDetailPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const department = await db().department.findUnique({
-    where: { id: resolvedParams.departmentId },
+  const department = await dbSystem().department.findFirst({
+    where: {
+      id: resolvedParams.departmentId,
+      organizationId: organization.id,
+    },
     include: {
       kpis: {
         where: { isPublic: true },
@@ -32,7 +35,7 @@ export default async function PublicDepartmentDetailPage({ params }: Props) {
     department &&
       (department.kpis.length > 0 ||
         department.grants.length > 0 ||
-        (await db().program.count({
+        (await dbSystem().program.count({
           where: {
             organizationId: organization.id,
             departmentId: resolvedParams.departmentId,
@@ -41,7 +44,7 @@ export default async function PublicDepartmentDetailPage({ params }: Props) {
         })) > 0),
   );
 
-  if (!department || department.organizationId !== organization.id || !isPublicDepartment) {
+  if (!department || !isPublicDepartment) {
     notFound();
   }
 

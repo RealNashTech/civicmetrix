@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 function asPercent(part: number, total: number) {
   if (total <= 0) {
@@ -9,15 +9,15 @@ function asPercent(part: number, total: number) {
 
 export async function getTransparencyMetrics(organizationId: string) {
   const [kpis, grants, issueTotals] = await Promise.all([
-    db().kPI.findMany({
+    dbSystem().kPI.findMany({
       where: { organizationId, isPublic: true },
       select: { id: true },
     }),
-    db().grant.findMany({
+    dbSystem().grant.findMany({
       where: { organizationId, isPublic: true },
       select: { amount: true },
     }),
-    db().issueReport.groupBy({
+    dbSystem().issueReport.groupBy({
       by: ["status"],
       where: { organizationId },
       _count: { _all: true },

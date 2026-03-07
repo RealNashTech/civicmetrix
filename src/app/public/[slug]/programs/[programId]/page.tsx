@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
 
 export const revalidate = 300;
@@ -28,8 +28,12 @@ export default async function PublicProgramDetailPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const program = await db().program.findUnique({
-    where: { id: resolvedParams.programId },
+  const program = await dbSystem().program.findFirst({
+    where: {
+      id: resolvedParams.programId,
+      organizationId: organization.id,
+      isPublic: true,
+    },
     include: {
       department: {
         select: { name: true },
@@ -48,11 +52,11 @@ export default async function PublicProgramDetailPage({ params }: Props) {
     },
   });
 
-  if (!program || program.organizationId !== organization.id || !program.isPublic) {
+  if (!program) {
     notFound();
   }
 
-  const recentIssues = await db().issueReport.findMany({
+  const recentIssues = await dbSystem().issueReport.findMany({
     where: {
       organizationId: organization.id,
       departmentId: program.departmentId,

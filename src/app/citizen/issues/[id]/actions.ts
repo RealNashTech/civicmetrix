@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createAuditLog } from "@/lib/audit";
 import { requireCitizenSession } from "@/lib/citizen-auth";
 import { notifyOrganizationEditors } from "@/lib/notifications";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type AddCitizenCommentInput = {
   issueId: string;
@@ -21,10 +21,11 @@ export async function addCitizenComment(input: AddCitizenCommentInput) {
     throw new Error("Issue id and message are required.");
   }
 
-  const issue = await db().issueReport.findFirst({
+  const issue = await dbSystem().issueReport.findFirst({
     where: {
       id: issueId,
       citizenId: citizen.citizenId,
+      organizationId: citizen.organizationId,
     },
     select: {
       id: true,
@@ -36,7 +37,7 @@ export async function addCitizenComment(input: AddCitizenCommentInput) {
     throw new Error("Issue not found.");
   }
 
-  const comment = await db().issueComment.create({
+  const comment = await dbSystem().issueComment.create({
     data: {
       issueId: issue.id,
       message,
@@ -65,7 +66,7 @@ export async function addCitizenComment(input: AddCitizenCommentInput) {
 export async function markNotificationsRead() {
   const citizen = await requireCitizenSession();
 
-  await db().citizenNotification.updateMany({
+  await dbSystem().citizenNotification.updateMany({
     where: {
       citizenId: citizen.citizenId,
       read: false,

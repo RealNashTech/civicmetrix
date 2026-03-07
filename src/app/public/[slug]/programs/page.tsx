@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
 
 export const revalidate = 300;
@@ -20,7 +20,7 @@ export default async function PublicProgramsPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const programs = await db().program.findMany({
+  const programs = await dbSystem().program.findMany({
     where: {
       organizationId: organization.id,
       isPublic: true,

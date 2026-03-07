@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import AssetMap from "@/components/maps/asset-map";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -21,14 +21,14 @@ export default async function PublicInfrastructurePage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const publicPrograms = await db().program.findMany({
+  const publicPrograms = await dbSystem().program.findMany({
     where: { organizationId: organization.id, isPublic: true },
     select: { departmentId: true },
   });
   const publicDepartmentIds = [...new Set(publicPrograms.map((program) => program.departmentId))];
 
   const [assets, workOrders] = await Promise.all([
-    db().asset.findMany({
+    dbSystem().asset.findMany({
       where: {
         organizationId: organization.id,
         departmentId: { in: publicDepartmentIds },
@@ -40,7 +40,7 @@ export default async function PublicInfrastructurePage({ params }: Props) {
       },
       orderBy: { createdAt: "desc" },
     }),
-    db().workOrder.findMany({
+    dbSystem().workOrder.findMany({
       where: {
         organizationId: organization.id,
         OR: [

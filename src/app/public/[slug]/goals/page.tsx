@@ -1,5 +1,5 @@
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -11,7 +11,7 @@ export default async function PublicGoalsPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const goals = await db().strategicGoal.findMany({
+  const goals = await dbSystem().strategicGoal.findMany({
     where: { organizationId: organization.id },
     include: {
       objectives: {

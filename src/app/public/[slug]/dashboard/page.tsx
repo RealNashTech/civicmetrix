@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -20,18 +20,18 @@ export default async function PublicTransparencyDashboardPage({ params }: Props)
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const publicPrograms = await db().program.findMany({
+  const publicPrograms = await dbSystem().program.findMany({
     where: { organizationId: organization.id, isPublic: true },
     select: { id: true, departmentId: true, name: true },
   });
   const publicDepartmentIds = [...new Set(publicPrograms.map((program) => program.departmentId))];
 
   const [kpis, budgets, issues, assets, departments] = await Promise.all([
-    db().kPI.findMany({
+    dbSystem().kPI.findMany({
       where: { organizationId: organization.id, isPublic: true },
       select: { status: true },
     }),
-    db().budget.findMany({
+    dbSystem().budget.findMany({
       where: {
         OR: [
           { program: { organizationId: organization.id, isPublic: true } },
@@ -40,21 +40,21 @@ export default async function PublicTransparencyDashboardPage({ params }: Props)
       },
       select: { allocated: true, spent: true, departmentId: true },
     }),
-    db().issueReport.findMany({
+    dbSystem().issueReport.findMany({
       where: {
         organizationId: organization.id,
         departmentId: { in: publicDepartmentIds },
       },
       select: { status: true, departmentId: true },
     }),
-    db().asset.findMany({
+    dbSystem().asset.findMany({
       where: {
         organizationId: organization.id,
         departmentId: { in: publicDepartmentIds },
       },
       select: { conditionScore: true, departmentId: true },
     }),
-    db().department.findMany({
+    dbSystem().department.findMany({
       where: { organizationId: organization.id, id: { in: publicDepartmentIds } },
       select: { id: true, name: true },
       orderBy: { name: "asc" },

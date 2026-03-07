@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { KpiTrendChart } from "@/components/charts/KpiTrendChart";
 import { summarizeTrend } from "@/lib/kpi-trends";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
 
 export const revalidate = 300;
@@ -15,7 +15,7 @@ export default async function PublicKpiTrendPage({ params }: Props) {
   const resolvedParams = await params;
   const org = await getOrganizationBySlug(resolvedParams.slug);
 
-  const kpis = await db().kPI.findMany({
+  const kpis = await dbSystem().kPI.findMany({
     where: {
       organizationId: org.id,
       isPublic: true,

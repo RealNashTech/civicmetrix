@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { requireCitizenSession } from "@/lib/citizen-auth";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 export async function markCitizenNotificationsRead() {
   const citizen = await requireCitizenSession();
 
-  await db().citizenNotification.updateMany({
+  await dbSystem().citizenNotification.updateMany({
     where: {
       citizenId: citizen.citizenId,
       read: false,

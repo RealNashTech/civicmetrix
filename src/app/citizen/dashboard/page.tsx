@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { requireCitizenSession } from "@/lib/citizen-auth";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 import { markCitizenNotificationsRead } from "./actions";
 
@@ -10,8 +10,11 @@ export default async function CitizenDashboardPage() {
   const citizen = await requireCitizenSession();
 
   const [issues, notifications] = await Promise.all([
-    db().issueReport.findMany({
-      where: { citizenId: citizen.citizenId },
+    dbSystem().issueReport.findMany({
+      where: {
+        citizenId: citizen.citizenId,
+        organizationId: citizen.organizationId,
+      },
       orderBy: { createdAt: "desc" },
       include: {
         department: {
@@ -22,7 +25,7 @@ export default async function CitizenDashboardPage() {
         },
       },
     }),
-    db().citizenNotification.findMany({
+    dbSystem().citizenNotification.findMany({
       where: { citizenId: citizen.citizenId },
       orderBy: { createdAt: "desc" },
       take: 10,

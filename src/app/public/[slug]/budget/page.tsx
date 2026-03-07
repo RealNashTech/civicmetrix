@@ -1,6 +1,6 @@
 import { BudgetUtilizationChart } from "@/components/charts/budget-utilization-chart";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -11,14 +11,14 @@ export const revalidate = 300;
 export default async function PublicBudgetExplorerPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
-  const publicPrograms = await db().program.findMany({
+  const publicPrograms = await dbSystem().program.findMany({
     where: { organizationId: organization.id, isPublic: true },
     select: { id: true, departmentId: true },
   });
   const publicProgramIds = publicPrograms.map((program) => program.id);
   const publicDepartmentIds = [...new Set(publicPrograms.map((program) => program.departmentId))];
 
-  const departments = await db().department.findMany({
+  const departments = await dbSystem().department.findMany({
     where: {
       organizationId: organization.id,
       id: { in: publicDepartmentIds },

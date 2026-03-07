@@ -15,7 +15,7 @@ import { notFound } from "next/navigation";
 import { createAuditLog } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import { createEvent } from "@/lib/events";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { AuthorizationError } from "@/lib/policies/base";
 import { rateLimit } from "@/middleware/rate-limit";
 
@@ -51,7 +51,7 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
   const session = await auth();
   const signedInUser = session?.user;
 
-  const organization = await db().organization.findUnique({
+  const organization = await dbSystem().organization.findUnique({
     where: { slug },
     select: { id: true },
   });
@@ -84,7 +84,7 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
 
   let departmentId: string | null = null;
   if (rawDepartmentId) {
-    const department = await db().department.findFirst({
+    const department = await dbSystem().department.findFirst({
       where: {
         id: rawDepartmentId,
         organizationId: organization.id,
@@ -101,7 +101,7 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
 
   let assetId: string | null = null;
   if (rawAssetId) {
-    const asset = await db().asset.findFirst({
+    const asset = await dbSystem().asset.findFirst({
       where: {
         id: rawAssetId,
         organizationId: organization.id,
@@ -136,7 +136,7 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
       createWriteStream(filePath, { flags: "wx" }),
     );
 
-    const document = await db().document.create({
+    const document = await dbSystem().document.create({
       data: {
         organizationId: organization.id,
         name: photo.name,
@@ -162,7 +162,7 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
     citizenId = signedInUser.citizenId;
   }
 
-  const issue = await db().$transaction(async (tx) => {
+  const issue = await dbSystem().$transaction(async (tx) => {
     const created = await tx.issueReport.create({
       data: {
         organizationId: organization.id,
@@ -205,7 +205,7 @@ export async function createIssueReport({ slug, formData }: CreateIssueReportInp
     },
   });
 
-  await db().alert.create({
+  await dbSystem().alert.create({
     data: {
       organizationId: organization.id,
       departmentId,

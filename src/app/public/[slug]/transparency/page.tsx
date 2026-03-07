@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
 import { getTransparencyMetrics } from "@/lib/public/transparency-metrics";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -23,7 +23,7 @@ export default async function PublicTransparencyPage({ params }: Props) {
   const metrics = await getTransparencyMetrics(organization.id);
 
   const [kpis, grants] = await Promise.all([
-    db().kPI.findMany({
+    dbSystem().kPI.findMany({
       where: {
         organizationId: organization.id,
         isPublic: true,
@@ -37,7 +37,7 @@ export default async function PublicTransparencyPage({ params }: Props) {
         updatedAt: true,
       },
     }),
-    db().grant.findMany({
+    dbSystem().grant.findMany({
       where: {
         organizationId: organization.id,
         isPublic: true,

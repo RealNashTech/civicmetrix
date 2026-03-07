@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
 
 import { createIssueReport } from "./actions";
@@ -14,12 +14,12 @@ export default async function ReportIssuePage({ params }: Props) {
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
   const [departments, assets] = await Promise.all([
-    db().department.findMany({
+    dbSystem().department.findMany({
       where: { organizationId: organization.id },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
-    db().asset.findMany({
+    dbSystem().asset.findMany({
       where: { organizationId: organization.id },
       orderBy: { name: "asc" },
       select: { id: true, name: true, type: true },

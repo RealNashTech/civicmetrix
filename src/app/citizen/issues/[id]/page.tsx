@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { Card } from "@/components/ui/card";
 import { requireCitizenSession } from "@/lib/citizen-auth";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 import { addCitizenComment } from "./actions";
 
@@ -14,10 +14,11 @@ export default async function CitizenIssuePage({ params }: Props) {
   const citizen = await requireCitizenSession();
   const resolvedParams = await params;
 
-  const issue = await db().issueReport.findFirst({
+  const issue = await dbSystem().issueReport.findFirst({
     where: {
       id: resolvedParams.id,
       citizenId: citizen.citizenId,
+      organizationId: citizen.organizationId,
     },
     include: {
       department: {
