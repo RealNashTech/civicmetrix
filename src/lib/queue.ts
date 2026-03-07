@@ -1,5 +1,7 @@
 import { Queue } from "bullmq";
 
+const DEFAULT_ATTEMPTS = 3;
+
 const redisUrl = process.env.REDIS_URL;
 const connection =
   redisUrl != null
@@ -18,7 +20,7 @@ export const eventProcessingQueue = connection
   ? new Queue("event-processing", {
       connection,
       defaultJobOptions: {
-        attempts: 3,
+        attempts: DEFAULT_ATTEMPTS,
         backoff: {
           type: "exponential",
           delay: 1_000,
@@ -32,7 +34,7 @@ export const grantRemindersQueue = connection
   ? new Queue("grant-reminders", {
       connection,
       defaultJobOptions: {
-        attempts: 3,
+        attempts: DEFAULT_ATTEMPTS,
         backoff: {
           type: "exponential",
           delay: 1_000,
@@ -46,7 +48,7 @@ export const issueSlaQueue = connection
   ? new Queue("issue-sla", {
       connection,
       defaultJobOptions: {
-        attempts: 3,
+        attempts: DEFAULT_ATTEMPTS,
         backoff: {
           type: "exponential",
           delay: 1_000,
@@ -60,7 +62,7 @@ export const maintenanceSchedulerQueue = connection
   ? new Queue("maintenance-scheduler", {
       connection,
       defaultJobOptions: {
-        attempts: 3,
+        attempts: DEFAULT_ATTEMPTS,
         backoff: {
           type: "exponential",
           delay: 1_000,
@@ -74,7 +76,7 @@ export const civicIntelligenceQueue = connection
   ? new Queue("civic-intelligence", {
       connection,
       defaultJobOptions: {
-        attempts: 3,
+        attempts: DEFAULT_ATTEMPTS,
         backoff: {
           type: "exponential",
           delay: 1_000,

@@ -136,7 +136,7 @@ describe("worker DLQ behavior", () => {
     }
   });
 
-  it("job timeout enforced", async () => {
+  it("repeatable jobs do not set unsupported timeout option", async () => {
     await startWorkers();
 
     const repeatableJobCalls = queueCalls.filter(
@@ -145,7 +145,7 @@ describe("worker DLQ behavior", () => {
 
     expect(repeatableJobCalls.length).toBeGreaterThan(0);
     for (const call of repeatableJobCalls) {
-      expect(call.options?.timeout).toBe(120000);
+      expect(call.options?.timeout).toBeUndefined();
     }
   });
 });

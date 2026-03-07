@@ -16,6 +16,7 @@ import { runIssueSlaWorker } from "@/workers/issue-sla-worker";
 import { runMaintenanceSchedulerWorker } from "@/workers/maintenance-scheduler-worker";
 
 const JOB_ATTEMPTS = 3;
+const DLQ_ALERT_THRESHOLD = 25;
 
 async function pushToDeadLetterQueue(deadLetterQueue: Queue, workerType: string, job: Job | undefined, error: Error) {
   await deadLetterQueue.add(
@@ -397,6 +398,49 @@ async function bootstrapWorkers() {
     workerOptions,
   );
 
+  const deadLetterWorker = new Worker(
+    "dead-letter",
+    async (job) => {
+      await runInstrumentedJob("dead-letter", job, async () => {
+        if (job.name === "dead-letter") {
+          logger.error("worker_dead_letter_received", {
+            workerType: job.data?.workerType ?? null,
+            failedJobId: job.data?.failedJobId ?? null,
+            failedJobName: job.data?.failedJobName ?? null,
+            failureReason: job.data?.failureReason ?? null,
+            attemptsMade: job.data?.attemptsMade ?? null,
+          });
+          return;
+        }
+
+        if (job.name === "run-dead-letter-metrics") {
+          const counts = await deadLetterQueue.getJobCounts("waiting", "active", "failed");
+          const waiting = counts.waiting ?? 0;
+          const failed = counts.failed ?? 0;
+          if (waiting > DLQ_ALERT_THRESHOLD || failed > 0) {
+            logger.error("worker_dead_letter_threshold_exceeded", {
+              waiting,
+              failed,
+              threshold: DLQ_ALERT_THRESHOLD,
+            });
+          } else {
+            logger.info("worker_dead_letter_healthy", {
+              waiting,
+              failed,
+            });
+          }
+          return;
+        }
+
+        logger.error("worker_unknown_job", {
+          workerType: "dead-letter",
+          jobName: job.name,
+        });
+      });
+    },
+    workerOptions,
+  );
+
   eventWorker.on("error", (error) => {
     logger.error("worker_error", {
       workerType: "event-processing",
@@ -482,11 +526,28 @@ async function bootstrapWorkers() {
     void pushToDeadLetterQueue(deadLetterQueue, "civic-intelligence", job, error);
   });
 
+  deadLetterWorker.on("error", (error) => {
+    logger.error("worker_error", {
+      workerType: "dead-letter",
+      failureReason: error.message,
+    });
+  });
+  deadLetterWorker.on("failed", (job, error) => {
+    logger.error("worker_failed", {
+      workerType: "dead-letter",
+      jobName: job?.name ?? null,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
+    });
+  });
+
   logger.info("worker_started", { workerType: "event-processing" });
   logger.info("worker_started", { workerType: "grant-reminders" });
   logger.info("worker_started", { workerType: "issue-sla" });
   logger.info("worker_started", { workerType: "maintenance-scheduler" });
   logger.info("worker_started", { workerType: "civic-intelligence" });
+  logger.info("worker_started", { workerType: "dead-letter" });
 }
 
 export async function startWorkers() {
