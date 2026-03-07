@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type AuditInput = {
   action: string;
@@ -9,15 +9,23 @@ type AuditInput = {
 };
 
 export async function createAuditLog(input: AuditInput) {
-  console.log("AUDIT INPUT:", input);
+  const immutableInput = Object.freeze({ ...input });
 
-  await db().auditLog.create({
+  await dbSystem().auditLog.create({
     data: {
-      action: input.action,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      userId: input.userId,
-      organizationId: input.organizationId,
+      action: immutableInput.action,
+      entityType: immutableInput.entityType,
+      entityId: immutableInput.entityId,
+      userId: immutableInput.userId,
+      organizationId: immutableInput.organizationId,
     },
   });
+}
+
+export async function updateAuditLog() {
+  throw new Error("AuditLog is immutable: updates are not allowed.");
+}
+
+export async function deleteAuditLog() {
+  throw new Error("AuditLog is immutable: deletes are not allowed.");
 }
