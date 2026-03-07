@@ -4,6 +4,7 @@ import { recordApiError, recordApiRequest } from "@/lib/observability/metrics";
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 type LogFields = {
+  component?: string;
   requestId?: string;
   tenantId?: string;
   userId?: string;

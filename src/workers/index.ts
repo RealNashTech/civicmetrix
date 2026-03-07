@@ -3,6 +3,7 @@ import { Job, Queue, Worker } from "bullmq";
 
 import { runWithObservabilityContext } from "@/lib/observability/context";
 import { logger } from "@/lib/observability/logger";
+import { recordDlqAlert, recordWorkerFailure } from "@/lib/observability/metrics";
 import { installProcessErrorHandlers } from "@/lib/observability/process-errors";
 import { runEventWorker } from "@/workers/event-worker";
 import { runGrantDeadlineWorker } from "@/workers/grant-deadline-worker";
@@ -418,6 +419,7 @@ async function bootstrapWorkers() {
           const waiting = counts.waiting ?? 0;
           const failed = counts.failed ?? 0;
           if (waiting > DLQ_ALERT_THRESHOLD || failed > 0) {
+            recordDlqAlert();
             logger.error("worker_dead_letter_threshold_exceeded", {
               waiting,
               failed,
@@ -448,6 +450,7 @@ async function bootstrapWorkers() {
     });
   });
   eventWorker.on("failed", (job, error) => {
+    recordWorkerFailure("event-processing");
     logger.error("worker_failed", {
       workerType: "event-processing",
       jobName: job?.name ?? null,
@@ -465,6 +468,7 @@ async function bootstrapWorkers() {
     });
   });
   grantReminderWorker.on("failed", (job, error) => {
+    recordWorkerFailure("grant-reminders");
     logger.error("worker_failed", {
       workerType: "grant-reminders",
       jobName: job?.name ?? null,
@@ -482,6 +486,7 @@ async function bootstrapWorkers() {
     });
   });
   issueSlaWorker.on("failed", (job, error) => {
+    recordWorkerFailure("issue-sla");
     logger.error("worker_failed", {
       workerType: "issue-sla",
       jobName: job?.name ?? null,
@@ -499,6 +504,7 @@ async function bootstrapWorkers() {
     });
   });
   maintenanceWorker.on("failed", (job, error) => {
+    recordWorkerFailure("maintenance-scheduler");
     logger.error("worker_failed", {
       workerType: "maintenance-scheduler",
       jobName: job?.name ?? null,
@@ -516,6 +522,7 @@ async function bootstrapWorkers() {
     });
   });
   civicIntelligenceWorker.on("failed", (job, error) => {
+    recordWorkerFailure("civic-intelligence");
     logger.error("worker_failed", {
       workerType: "civic-intelligence",
       jobName: job?.name ?? null,
@@ -533,6 +540,7 @@ async function bootstrapWorkers() {
     });
   });
   deadLetterWorker.on("failed", (job, error) => {
+    recordWorkerFailure("dead-letter");
     logger.error("worker_failed", {
       workerType: "dead-letter",
       jobName: job?.name ?? null,
