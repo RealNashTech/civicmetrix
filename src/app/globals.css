@@ -1,12 +1,11 @@
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
-@import "../styles/tokens.css";
 
 :root {
-  color-scheme: light;
+  --cm-bg: #ffffff;
+  --cm-text: #0f172a;
 }
 
 body {
-  background-color: var(--cm-bg);
+  background: var(--cm-bg);
   color: var(--cm-text);
 }

@@ -26,7 +26,12 @@ export default async function CitizenDashboardPage() {
       },
     }),
     dbSystem().citizenNotification.findMany({
-      where: { citizenId: citizen.citizenId },
+      where: {
+        citizenId: citizen.citizenId,
+        citizen: {
+          organizationId: citizen.organizationId,
+        },
+      },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),

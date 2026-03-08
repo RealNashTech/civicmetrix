@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 type IssueDatum = {
   latitude: number
   longitude: number
+  category?: string | null
 }
 
 type GrantDatum = {

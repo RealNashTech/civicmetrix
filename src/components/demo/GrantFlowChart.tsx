@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
   BarChart,
   Bar,
@@ -15,20 +16,30 @@ type GrantFlowDatum = {
 }
 
 function GrantFlowChart({ data }: { data: GrantFlowDatum[] }) {
-  if (typeof window === "undefined") return null
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return (
+      <div style={{ height: 400 }} />
+    )
+  }
+
+  console.log("Chart data:", data)
 
   if (!data || data.length === 0) {
     return (
       <div
-        style={{ height: 320 }}
+        style={{ height: 400 }}
         className="border rounded flex items-center justify-center text-sm text-slate-500"
       >
         No data available
       </div>
     )
   }
-
-  console.log("Grant chart data", data)
 
   const safeData = data
     .map((item) => ({
@@ -47,7 +58,7 @@ function GrantFlowChart({ data }: { data: GrantFlowDatum[] }) {
   if (!safeData.length) {
     return (
       <div
-        style={{ height: 320 }}
+        style={{ height: 400 }}
         className="border rounded flex items-center justify-center text-sm text-slate-500"
       >
         No data available
@@ -56,7 +67,7 @@ function GrantFlowChart({ data }: { data: GrantFlowDatum[] }) {
   }
 
   return (
-    <div style={{ width: "100%", height: 320 }}>
+    <div style={{ width: "100%", height: 400 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={safeData}>
           <XAxis dataKey="department" />

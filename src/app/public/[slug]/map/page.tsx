@@ -32,8 +32,11 @@ export default async function PublicMapPage({ params }: Props) {
       select: {
         id: true,
         title: true,
+        description: true,
+        category: true,
         status: true,
         priority: true,
+        createdAt: true,
         latitude: true,
         longitude: true,
       },
@@ -51,8 +54,11 @@ export default async function PublicMapPage({ params }: Props) {
   const mappedIssues = issues.map((issue) => ({
     id: issue.id,
     title: issue.title,
+    description: issue.description,
+    category: issue.category,
     status: issue.status,
     priority: issue.priority,
+    createdAt: issue.createdAt,
     latitude: issue.latitude as number,
     longitude: issue.longitude as number,
   }));
@@ -70,6 +76,7 @@ export default async function PublicMapPage({ params }: Props) {
       </div>
 
       <PublicMapClient
+        slug={resolvedParams.slug}
         issues={mappedIssues}
         serviceZones={serviceZones}
         infrastructureLayers={infrastructureLayers}

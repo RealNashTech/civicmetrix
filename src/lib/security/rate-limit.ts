@@ -5,21 +5,16 @@ import { AuthorizationError } from "@/lib/policies/base";
 
 type RateLimitKey = "auth/register" | "issue submit" | "file upload" | "internal metrics";
 
-const LIMIT_CONFIG: Record<RateLimitKey, { requests: number; windowMs: number }> = {
-  "auth/register": { requests: 10, windowMs: 60_000 },
-  "issue submit": { requests: 20, windowMs: 60_000 },
-  "file upload": { requests: 5, windowMs: 60_000 },
-  "internal metrics": { requests: 30, windowMs: 60_000 },
-};
-
-const localBuckets = new Map<string, number[]>();
-
 const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-const isProduction = process.env.NODE_ENV === "production";
+const hasPlaceholderRedisUrl = upstashUrl?.toLowerCase().includes("example") ?? false;
+const redisEnabled =
+  Boolean(upstashUrl) &&
+  Boolean(upstashToken) &&
+  !hasPlaceholderRedisUrl;
 
 const redis =
-  upstashUrl && upstashToken
+  redisEnabled
     ? new Redis({
         url: upstashUrl,
         token: upstashToken,
@@ -56,35 +51,26 @@ function getClientIdentifier(request: Request) {
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 
-function enforceLocalSlidingWindow(route: RateLimitKey, identifier: string) {
-  const { requests, windowMs } = LIMIT_CONFIG[route];
-  const key = `${route}:${identifier}`;
-  const now = Date.now();
-  const windowStart = now - windowMs;
-  const history = (localBuckets.get(key) ?? []).filter((value) => value > windowStart);
-
-  if (history.length >= requests) {
-    throw new AuthorizationError(429, "Rate limit exceeded.");
-  }
-
-  history.push(now);
-  localBuckets.set(key, history);
-}
-
 async function enforceForIdentifier(route: RateLimitKey, identifier: string) {
   const limiter = upstashLimiters[route];
 
   if (!limiter) {
-    if (isProduction) {
-      throw new AuthorizationError(500, "Rate limiting backend not configured.");
-    }
-    enforceLocalSlidingWindow(route, identifier);
+    // Fail open when rate limiting backend is not configured.
     return;
   }
 
-  const result = await limiter.limit(`${route}:${identifier}`);
-  if (!result.success) {
-    throw new AuthorizationError(429, "Rate limit exceeded.");
+  try {
+    const result = await limiter.limit(`${route}:${identifier}`);
+    if (!result.success) {
+      throw new AuthorizationError(429, "Rate limit exceeded.");
+    }
+  } catch (error) {
+    if (error instanceof AuthorizationError && error.status === 429) {
+      throw error;
+    }
+
+    // Fail open on Redis transport/runtime issues.
+    console.warn("Rate limit disabled: Redis unavailable", error);
   }
 }
 

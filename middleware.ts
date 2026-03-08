@@ -1,8 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { globalLimiter } from "@/lib/rate-limit";
+import { buildContentSecurityPolicy } from "@/lib/security/csp";
+
+function withSecurityHeaders(response: NextResponse, nonce: string) {
+  response.headers.set("Content-Security-Policy", buildContentSecurityPolicy(nonce));
+  return response;
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const nonce = crypto.randomUUID();
+  const shouldRateLimit =
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/public") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/citizen");
+
+  if (shouldRateLimit) {
+    const forwardedFor = req.headers.get("x-forwarded-for");
+    const realIp = req.headers.get("x-real-ip");
+    const ip = forwardedFor?.split(",")[0]?.trim() ?? realIp ?? "anonymous";
+    const { success } = await globalLimiter.limit(ip);
+
+    if (!success) {
+      return withSecurityHeaders(new NextResponse("Too Many Requests", { status: 429 }), nonce);
+    }
+  }
+
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
   const token = await getToken({
     req,
@@ -11,6 +36,7 @@ export async function middleware(req: NextRequest) {
 
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-request-id", requestId);
+  requestHeaders.set("x-nonce", nonce);
   const tokenOrganizationId = token?.organizationId as string | undefined;
   if (tokenOrganizationId) {
     requestHeaders.set("x-civicmetrix-tenant", tokenOrganizationId);
@@ -18,7 +44,7 @@ export async function middleware(req: NextRequest) {
 
   if (pathname.startsWith("/dashboard")) {
     if (!token) {
-      return NextResponse.redirect(new URL("/auth/login", req.url));
+      return withSecurityHeaders(NextResponse.redirect(new URL("/auth/login", req.url)), nonce);
     }
 
     const tokenRole = token.role as string | undefined;
@@ -27,17 +53,23 @@ export async function middleware(req: NextRequest) {
     const isStaff = tokenUserType ? tokenUserType === "staff" : isStaffRole;
 
     if (!isStaff) {
-      return NextResponse.redirect(new URL("/citizen/dashboard", req.url));
+      return withSecurityHeaders(NextResponse.redirect(new URL("/citizen/dashboard", req.url)), nonce);
     }
   }
 
-  return NextResponse.next({
+  return withSecurityHeaders(NextResponse.next({
     request: {
       headers: requestHeaders,
     },
-  });
+  }), nonce);
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/api/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/api/:path*",
+    "/public/:path*",
+    "/auth/:path*",
+    "/citizen/:path*",
+  ],
 };

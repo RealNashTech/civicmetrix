@@ -1,9 +1,649 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model Organization {
+  id                   String                @id @default(cuid())
+  name                 String
+  slug                 String                @unique
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  alerts               Alert[]
+  apiTokens            ApiToken[]
+  assets               Asset[]
+  budgets              Budget[]
+  citizens             Citizen[]
+  councilReports       CouncilReport[]
+  dashboards           Dashboard[]
+  departments          Department[]
+  districts            District[]
+  documents            Document[]
+  events               Event[]
+  grants               Grant[]
+  infrastructureLayers InfrastructureLayer[]
+  insights             Insight[]
+  issueReports         IssueReport[]
+  kpis                 KPI[]
+  maintenanceSchedules MaintenanceSchedule[]
+  programs             Program[]
+  slaPolicies          SLAPolicy[]
+  serviceZones         ServiceZone[]
+  strategicGoals       StrategicGoal[]
+  users                User[]
+  wards                Ward[]
+  workOrders           WorkOrder[]
+}
+
+model Department {
+  id                                                  String                 @id @default(cuid())
+  name                                                String
+  organizationId                                      String
+  createdAt                                           DateTime               @default(now())
+  alerts                                              Alert[]
+  assets                                              Asset[]
+  budgets                                             Budget[]
+  organization                                        Organization           @relation(fields: [organizationId], references: [id])
+  departmentPermissions                               DepartmentPermission[]
+  grants                                              Grant[]
+  Grant_Grant_organizationId_departmentIdToDepartment Grant[]                @relation("Grant_organizationId_departmentIdToDepartment")
+  assignedIssueReports                                IssueReport[]          @relation("AssignedIssueDepartment")
+  issueReports                                        IssueReport[]          @relation("ReportedIssueDepartment")
+  kpis                                                KPI[]
+  programs                                            Program[]
+  workOrders                                          WorkOrder[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+}
+
+model Program {
+  id                                        String               @id @default(cuid())
+  name                                      String
+  description                               String?
+  departmentId                              String
+  organizationId                            String
+  isPublic                                  Boolean              @default(false)
+  startDate                                 DateTime?
+  endDate                                   DateTime?
+  createdAt                                 DateTime             @default(now())
+  alerts                                    Alert[]
+  budgets                                   Budget[]
+  grants                                    Grant[]
+  KPI_KPI_organizationId_programIdToProgram KPI[]                @relation("KPI_organizationId_programIdToProgram")
+  kpis                                      KPI[]
+  department                                Department           @relation(fields: [departmentId], references: [id])
+  organization                              Organization         @relation(fields: [organizationId], references: [id])
+  strategicObjectives                       StrategicObjective[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([departmentId])
+}
+
+model Budget {
+  id             String        @id @default(cuid())
+  programId      String?
+  fiscalYear     Int
+  allocated      Decimal
+  spent          Decimal       @default(0)
+  createdAt      DateTime      @default(now())
+  category       String        @default("GENERAL")
+  departmentId   String?
+  organizationId String?
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  program        Program?      @relation(fields: [programId], references: [id])
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([programId])
+}
+
+model User {
+  id                    String                 @id @default(cuid())
+  name                  String
+  email                 String
+  passwordHash          String
+  role                  Role                   @default(VIEWER)
+  organizationId        String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  departmentPermissions DepartmentPermission[]
+  notifications         Notification[]
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([email, organizationId])
+  @@index([organizationId])
+}
+
+model Dashboard {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?
+  organizationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grants         Grant[]
+  kpis           KPI[]
+
+  @@index([organizationId])
+}
+
+model KPI {
+  id                                            String          @id @default(cuid())
+  name                                          String
+  value                                         Float
+  unit                                          String?
+  periodLabel                                   String?
+  organizationId                                String
+  dashboardId                                   String?
+  createdAt                                     DateTime        @default(now())
+  updatedAt                                     DateTime        @updatedAt
+  isPublic                                      Boolean         @default(false)
+  departmentId                                  String?
+  programId                                     String?
+  status                                        KPIStatus       @default(ON_TRACK)
+  target                                        Float?
+  milestoneId                                   String?
+  dashboard                                     Dashboard?      @relation(fields: [dashboardId], references: [id])
+  department                                    Department?     @relation(fields: [departmentId], references: [id])
+  milestone                                     GrantMilestone? @relation(fields: [milestoneId], references: [id])
+  Program_KPI_organizationId_programIdToProgram Program?        @relation("KPI_organizationId_programIdToProgram", fields: [organizationId, programId], references: [organizationId, id], onDelete: SetNull, map: "KPI_org_program_tenant_fkey")
+  organization                                  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  program                                       Program?        @relation(fields: [programId], references: [id])
+  history                                       KPIHistory[]
+
+  @@index([organizationId])
+  @@index([dashboardId])
+  @@index([departmentId])
+  @@index([programId])
+  @@index([milestoneId])
+}
+
+model Alert {
+  id             String        @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  programId      String?
+  title          String
+  message        String
+  severity       AlertSeverity @default(INFO)
+  createdAt      DateTime      @default(now())
+  resolvedAt     DateTime?
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  program        Program?      @relation(fields: [programId], references: [id])
+
+  @@unique([organizationId, title], map: "Alert_org_title_unresolved_unique_idx", where: raw("(\"resolvedAt\" IS NULL)"))
+  @@index([organizationId, createdAt])
+  @@index([departmentId])
+  @@index([programId])
+}
+
+model KPIHistory {
+  id         String   @id @default(cuid())
+  kpiId      String
+  value      Decimal
+  recordedAt DateTime @default(now())
+  kpi        KPI      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@index([kpiId])
+  @@index([recordedAt])
+}
+
+model Grant {
+  id                                                       String                 @id @default(cuid())
+  name                                                     String
+  status                                                   GrantStatus            @default(PIPELINE)
+  amount                                                   Decimal                @db.Decimal(12, 2)
+  startDate                                                DateTime?
+  endDate                                                  DateTime?
+  organizationId                                           String
+  dashboardId                                              String?
+  createdAt                                                DateTime               @default(now())
+  updatedAt                                                DateTime               @updatedAt
+  isPublic                                                 Boolean                @default(false)
+  departmentId                                             String?
+  programId                                                String?
+  complianceStatus                                         GrantComplianceStatus?
+  lastReportSubmitted                                      DateTime?
+  nextReportDue                                            DateTime?
+  reportingFrequency                                       String?
+  applicationDeadline                                      DateTime?
+  awardAmount                                              Decimal?               @db.Decimal(12, 2)
+  reportDueDate                                            DateTime?
+  dashboard                                                Dashboard?             @relation(fields: [dashboardId], references: [id])
+  department                                               Department?            @relation(fields: [departmentId], references: [id])
+  Department_Grant_organizationId_departmentIdToDepartment Department?            @relation("Grant_organizationId_departmentIdToDepartment", fields: [organizationId, departmentId], references: [organizationId, id], onDelete: SetNull, map: "Grant_org_department_tenant_fkey")
+  organization                                             Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  program                                                  Program?               @relation(fields: [programId], references: [id])
+  metrics                                                  GrantMetric[]
+  milestones                                               GrantMilestone[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([organizationId, status])
+  @@index([organizationId, applicationDeadline])
+  @@index([dashboardId])
+  @@index([departmentId])
+  @@index([programId])
+  @@index([nextReportDue], map: "grant_next_report_due_idx")
+}
+
+model GrantMilestone {
+  id           String             @id @default(cuid())
+  grantId      String
+  name         String
+  description  String?
+  dueDate      DateTime
+  completed    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  deliverables GrantDeliverable[]
+  grant        Grant              @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  kpis         KPI[]
+
+  @@index([grantId])
+  @@index([dueDate])
+}
+
+model GrantDeliverable {
+  id          String         @id @default(cuid())
+  milestoneId String
+  description String
+  completed   Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  milestone   GrantMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  @@index([milestoneId])
+}
+
+model StrategicGoal {
+  id             String               @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  targetYear     Int?
+  createdAt      DateTime             @default(now())
+  organization   Organization         @relation(fields: [organizationId], references: [id])
+  objectives     StrategicObjective[]
+
+  @@index([organizationId, createdAt])
+}
+
+model StrategicObjective {
+  id              String        @id @default(cuid())
+  goalId          String
+  programId       String?
+  title           String
+  description     String?
+  progressPercent Int           @default(0)
+  goal            StrategicGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  program         Program?      @relation(fields: [programId], references: [id])
+
+  @@index([goalId])
+  @@index([programId])
+}
+
+model GrantMetric {
+  id        String   @id @default(cuid())
+  grantId   String
+  label     String
+  value     Float
+  unit      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  grant     Grant    @relation(fields: [grantId], references: [id], onDelete: Cascade)
+
+  @@index([grantId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  entityType     String
+  entityId       String
+  userId         String
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+model DepartmentPermission {
+  id           String     @id @default(cuid())
+  userId       String
+  departmentId String
+  role         String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, departmentId])
+  @@index([departmentId])
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  fileUrl        String
+  type           String
+  entityType     String?
+  entityId       String?
+  uploadedBy     String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model ApiToken {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+  tokenPrefix    String?      @db.VarChar(8)
+  scope          String
+  tokenHash      String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([tokenPrefix])
+  @@index([revokedAt])
+  @@index([tokenPrefix, organizationId], map: "api_token_active_prefix_org_idx", where: raw("(\"revokedAt\" IS NULL)"))
+}
+
+model IssueReport {
+  id                                                      String         @id @default(cuid())
+  organizationId                                          String
+  departmentId                                            String?
+  title                                                   String
+  description                                             String
+  category                                                String
+  status                                                  IssueStatus    @default(OPEN)
+  reporterEmail                                           String?
+  reporterName                                            String?
+  createdAt                                               DateTime       @default(now())
+  resolvedAt                                              DateTime?
+  assignedDepartmentId                                    String?
+  assignedUserId                                          String?
+  priority                                                IssuePriority?
+  address                                                 String?
+  latitude                                                Float?
+  longitude                                               Float?
+  assetId                                                 String?
+  citizenId                                               String?
+  photoUrl                                                String?
+  slaBreached                                             Boolean        @default(false)
+  slaResolutionDueAt                                      DateTime?
+  slaResponseDueAt                                        DateTime?
+  updatedAt                                               DateTime       @updatedAt
+  comments                                                IssueComment[]
+  asset                                                   Asset?         @relation(fields: [assetId], references: [id])
+  assignedDepartment                                      Department?    @relation("AssignedIssueDepartment", fields: [assignedDepartmentId], references: [id])
+  citizen                                                 Citizen?       @relation(fields: [citizenId], references: [id])
+  department                                              Department?    @relation("ReportedIssueDepartment", fields: [departmentId], references: [id])
+  Asset_IssueReport_organizationId_assetIdToAsset         Asset?         @relation("IssueReport_organizationId_assetIdToAsset", fields: [organizationId, assetId], references: [organizationId, id], onDelete: SetNull, map: "IssueReport_org_asset_tenant_fkey")
+  organization                                            Organization   @relation(fields: [organizationId], references: [id])
+  workOrders                                              WorkOrder[]
+  WorkOrder_WorkOrder_organizationId_issueIdToIssueReport WorkOrder[]    @relation("WorkOrder_organizationId_issueIdToIssueReport")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, createdAt])
+  @@index([departmentId])
+  @@index([assignedDepartmentId])
+  @@index([assetId])
+  @@index([citizenId])
+  @@index([status])
+  @@index([priority])
+  @@index([organizationId, status, priority, createdAt(sort: Desc)], map: "issue_report_org_status_priority_created_idx")
+  @@index([slaBreached, status, slaResponseDueAt, slaResolutionDueAt], map: "issue_report_sla_scan_idx")
+}
+
+model SLAPolicy {
+  id              String       @id @default(cuid())
+  organizationId  String
+  issueCategory   String
+  responseHours   Int
+  resolutionHours Int
+  createdAt       DateTime     @default(now())
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([issueCategory])
+}
+
+model Citizen {
+  id             String                @id @default(cuid())
+  email          String
+  name           String?
+  passwordHash   String
+  organizationId String
+  createdAt      DateTime              @default(now())
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  notifications  CitizenNotification[]
+  issues         IssueReport[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+}
+
+model IssueComment {
+  id         String      @id @default(cuid())
+  issueId    String
+  message    String
+  createdAt  DateTime    @default(now())
+  authorType String
+  issue      IssueReport @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+}
+
+model CitizenNotification {
+  id        String   @id @default(cuid())
+  citizenId String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  citizen   Citizen  @relation(fields: [citizenId], references: [id], onDelete: Cascade)
+
+  @@index([citizenId, createdAt])
+}
+
+model District {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Ward {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model ServiceZone {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  type           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model InfrastructureLayer {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  geoJson        Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Asset {
+  id                                                    String                @id @default(cuid())
+  organizationId                                        String
+  departmentId                                          String?
+  name                                                  String
+  type                                                  String
+  latitude                                              Float?
+  longitude                                             Float?
+  address                                               String?
+  installDate                                           DateTime?
+  conditionScore                                        Int?
+  status                                                String                @default("ACTIVE")
+  createdAt                                             DateTime              @default(now())
+  updatedAt                                             DateTime              @updatedAt
+  department                                            Department?           @relation(fields: [departmentId], references: [id])
+  organization                                          Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  issues                                                IssueReport[]
+  IssueReport_IssueReport_organizationId_assetIdToAsset IssueReport[]         @relation("IssueReport_organizationId_assetIdToAsset")
+  maintenanceSchedules                                  MaintenanceSchedule[]
+  workOrders                                            WorkOrder[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([departmentId])
+}
+
+model WorkOrder {
+  id                                                        String             @id @default(cuid())
+  organizationId                                            String
+  assetId                                                   String?
+  issueId                                                   String?
+  departmentId                                              String?
+  title                                                     String
+  description                                               String?
+  status                                                    WorkOrderStatus    @default(OPEN)
+  priority                                                  WorkOrderPriority?
+  scheduledDate                                             DateTime?
+  completedAt                                               DateTime?
+  createdAt                                                 DateTime           @default(now())
+  updatedAt                                                 DateTime           @updatedAt
+  asset                                                     Asset?             @relation(fields: [assetId], references: [id])
+  department                                                Department?        @relation(fields: [departmentId], references: [id])
+  issue                                                     IssueReport?       @relation(fields: [issueId], references: [id])
+  IssueReport_WorkOrder_organizationId_issueIdToIssueReport IssueReport?       @relation("WorkOrder_organizationId_issueIdToIssueReport", fields: [organizationId, issueId], references: [organizationId, id], onDelete: SetNull, map: "WorkOrder_org_issue_tenant_fkey")
+  organization                                              Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([assetId])
+  @@index([status])
+  @@index([departmentId], map: "work_order_department_idx")
+  @@index([issueId], map: "work_order_issue_idx")
+  @@index([organizationId, status, priority, createdAt(sort: Desc)], map: "work_order_org_status_priority_created_idx")
+}
+
+model MaintenanceSchedule {
+  id             String       @id @default(cuid())
+  organizationId String
+  assetId        String
+  name           String
+  frequencyDays  Int
+  lastCompleted  DateTime?
+  createdAt      DateTime     @default(now())
+  asset          Asset        @relation(fields: [assetId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([assetId])
+}
+
+model Event {
+  id             String       @id @default(cuid())
+  organizationId String
+  type           String
+  entityType     String
+  entityId       String?
+  payload        Json?
+  processed      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  processedAt    DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([processed])
+  @@index([createdAt])
+  @@index([processed, createdAt], map: "event_processed_created_idx")
+}
+
+model Insight {
+  id             String          @id @default(cuid())
+  organizationId String
+  type           InsightType
+  severity       InsightSeverity @default(INFO)
+  title          String
+  description    String
+  sourceEntity   String?
+  sourceId       String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  resolvedAt     DateTime?
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, resolvedAt])
+  @@index([type])
+  @@index([sourceEntity, sourceId])
+}
+
+model CouncilReport {
+  id             String       @id @default(cuid())
+  organizationId String
+  generatedById  String
+  reportDate     DateTime
+  summary        Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
 }
 
 enum Role {
@@ -26,9 +666,9 @@ enum AlertSeverity {
 
 enum InsightType {
   SERVICE_ANOMALY
-  SERVICE_CLUSTER
   GRANT_RISK
   KPI_TREND_ALERT
+  SERVICE_CLUSTER
 }
 
 enum InsightSeverity {
@@ -78,649 +718,4 @@ enum WorkOrderPriority {
   MEDIUM
   HIGH
   URGENT
-}
-
-model Organization {
-  id          String      @id @default(cuid())
-  name        String
-  slug        String      @unique
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  users       User[]
-  dashboards  Dashboard[]
-  departments Department[]
-  programs    Program[]
-  kpis        KPI[]
-  grants      Grant[]
-  alerts      Alert[]
-  issueReports IssueReport[]
-  strategicGoals StrategicGoal[]
-  documents    Document[]
-  apiTokens    ApiToken[]
-  assets       Asset[]
-  workOrders   WorkOrder[]
-  maintenanceSchedules MaintenanceSchedule[]
-  budgets      Budget[]
-  citizens     Citizen[]
-  districts    District[]
-  wards        Ward[]
-  serviceZones ServiceZone[]
-  infrastructureLayers InfrastructureLayer[]
-  events       Event[]
-  slaPolicies  SLAPolicy[]
-  insights     Insight[]
-  councilReports CouncilReport[]
-}
-
-model Department {
-  id             String       @id @default(cuid())
-  name           String
-  organizationId String
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id])
-
-  programs       Program[]
-  kpis           KPI[]
-  grants         Grant[]
-  alerts         Alert[]
-  issueReports         IssueReport[] @relation("ReportedIssueDepartment")
-  assignedIssueReports IssueReport[] @relation("AssignedIssueDepartment")
-  departmentPermissions DepartmentPermission[]
-  assets         Asset[]
-  workOrders     WorkOrder[]
-  budgets        Budget[]
-
-  @@index([organizationId])
-}
-
-model Program {
-  id             String       @id @default(cuid())
-  name           String
-  description    String?
-  departmentId   String
-  organizationId String
-  isPublic       Boolean      @default(false)
-  startDate      DateTime?
-  endDate        DateTime?
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  department     Department   @relation(fields: [departmentId], references: [id])
-
-  budgets        Budget[]
-  kpis           KPI[]
-  grants         Grant[]
-  alerts         Alert[]
-  strategicObjectives StrategicObjective[]
-
-  @@index([organizationId])
-  @@index([departmentId])
-}
-
-model Budget {
-  id         String   @id @default(cuid())
-  organizationId String?
-  departmentId String?
-  programId  String?
-  fiscalYear Int
-  category   String   @default("GENERAL")
-  allocated  Decimal
-  spent      Decimal  @default(0)
-  createdAt  DateTime @default(now())
-
-  organization Organization? @relation(fields: [organizationId], references: [id])
-  department Department? @relation(fields: [departmentId], references: [id])
-  program    Program?  @relation(fields: [programId], references: [id])
-
-  @@index([organizationId])
-  @@index([departmentId])
-  @@index([programId])
-}
-
-model User {
-  id             String       @id @default(cuid())
-  name           String
-  email          String
-  passwordHash   String
-  role           Role         @default(VIEWER)
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  departmentPermissions DepartmentPermission[]
-  notifications  Notification[]
-
-  @@unique([email, organizationId])
-  @@index([organizationId])
-}
-
-model Dashboard {
-  id             String       @id @default(cuid())
-  title          String
-  description    String?
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  kpis           KPI[]
-  grants         Grant[]
-
-  @@index([organizationId])
-}
-
-model KPI {
-  id             String       @id @default(cuid())
-  name           String
-  value          Float
-  target         Float?
-  status         KPIStatus    @default(ON_TRACK)
-  unit           String?
-  periodLabel    String?
-  isPublic       Boolean      @default(false)
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  dashboardId    String?
-  dashboard      Dashboard?   @relation(fields: [dashboardId], references: [id], onDelete: SetNull)
-  departmentId   String?
-  department     Department?  @relation(fields: [departmentId], references: [id])
-  programId      String?
-  program        Program?     @relation(fields: [programId], references: [id])
-  milestoneId    String?
-  milestone      GrantMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-  history        KPIHistory[]
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  @@index([organizationId])
-  @@index([dashboardId])
-  @@index([departmentId])
-  @@index([programId])
-  @@index([milestoneId])
-}
-
-model Alert {
-  id             String        @id @default(cuid())
-  organizationId String
-  departmentId   String?
-  programId      String?
-  title          String
-  message        String
-  severity       AlertSeverity @default(INFO)
-  createdAt      DateTime      @default(now())
-  resolvedAt     DateTime?
-
-  organization   Organization  @relation(fields: [organizationId], references: [id])
-  department     Department?   @relation(fields: [departmentId], references: [id])
-  program        Program?      @relation(fields: [programId], references: [id])
-
-  @@index([organizationId, createdAt])
-  @@index([departmentId])
-  @@index([programId])
-}
-
-model KPIHistory {
-  id         String   @id @default(cuid())
-  kpiId      String
-  value      Decimal
-  recordedAt DateTime @default(now())
-
-  kpi        KPI      @relation(fields: [kpiId], references: [id], onDelete: Cascade)
-
-  @@index([kpiId])
-  @@index([recordedAt])
-}
-
-model Grant {
-  id             String        @id @default(cuid())
-  name           String
-  status         GrantStatus   @default(PIPELINE)
-  amount         Decimal       @db.Decimal(12, 2)
-  applicationDeadline DateTime?
-  awardAmount    Decimal?      @db.Decimal(12, 2)
-  reportDueDate  DateTime?
-  isPublic       Boolean       @default(false)
-  startDate      DateTime?
-  endDate        DateTime?
-  organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  dashboardId    String?
-  dashboard      Dashboard?    @relation(fields: [dashboardId], references: [id], onDelete: SetNull)
-  departmentId   String?
-  department     Department?   @relation(fields: [departmentId], references: [id])
-  programId      String?
-  program        Program?      @relation(fields: [programId], references: [id])
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  reportingFrequency String?
-  nextReportDue      DateTime?
-  lastReportSubmitted DateTime?
-  complianceStatus   GrantComplianceStatus?
-  metrics        GrantMetric[]
-  milestones     GrantMilestone[]
-
-  @@index([organizationId])
-  @@index([status])
-  @@index([organizationId, status])
-  @@index([organizationId, applicationDeadline])
-  @@index([nextReportDue])
-  @@index([dashboardId])
-  @@index([departmentId])
-  @@index([programId])
-}
-
-model GrantMilestone {
-  id          String            @id @default(cuid())
-  grantId     String
-  name        String
-  description String?
-  dueDate     DateTime
-  completed   Boolean           @default(false)
-  createdAt   DateTime          @default(now())
-
-  grant       Grant             @relation(fields: [grantId], references: [id], onDelete: Cascade)
-  deliverables GrantDeliverable[]
-  kpis        KPI[]
-
-  @@index([grantId])
-  @@index([dueDate])
-}
-
-model GrantDeliverable {
-  id          String         @id @default(cuid())
-  milestoneId String
-  description String
-  completed   Boolean        @default(false)
-  createdAt   DateTime       @default(now())
-
-  milestone   GrantMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
-
-  @@index([milestoneId])
-}
-
-model StrategicGoal {
-  id             String               @id @default(cuid())
-  organizationId String
-  title          String
-  description    String?
-  targetYear     Int?
-  createdAt      DateTime             @default(now())
-
-  organization   Organization         @relation(fields: [organizationId], references: [id])
-  objectives     StrategicObjective[]
-
-  @@index([organizationId, createdAt])
-}
-
-model StrategicObjective {
-  id              String         @id @default(cuid())
-  goalId          String
-  programId       String?
-  title           String
-  description     String?
-  progressPercent Int            @default(0)
-
-  goal            StrategicGoal  @relation(fields: [goalId], references: [id], onDelete: Cascade)
-  program         Program?       @relation(fields: [programId], references: [id])
-
-  @@index([goalId])
-  @@index([programId])
-}
-
-model GrantMetric {
-  id        String   @id @default(cuid())
-  grantId   String
-  label     String
-  value     Float
-  unit      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  grant     Grant    @relation(fields: [grantId], references: [id], onDelete: Cascade)
-
-  @@index([grantId])
-}
-
-model AuditLog {
-  id             String   @id @default(cuid())
-  action         String
-  entityType     String
-  entityId       String
-  userId         String
-  organizationId String
-  createdAt      DateTime @default(now())
-
-  @@index([organizationId, createdAt])
-}
-
-model DepartmentPermission {
-  id           String     @id @default(cuid())
-  userId       String
-  departmentId String
-  role         String
-
-  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, departmentId])
-  @@index([departmentId])
-}
-
-model Document {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  fileUrl        String
-  type           String
-  entityType     String?
-  entityId       String?
-  uploadedBy     String
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId, createdAt])
-  @@index([entityType, entityId])
-}
-
-model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  message   String
-  link      String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-}
-
-model ApiToken {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  tokenPrefix    String?      @db.VarChar(8)
-  tokenHash      String
-  scope          String
-  expiresAt      DateTime?
-  lastUsedAt     DateTime?
-  createdAt      DateTime     @default(now())
-  revokedAt      DateTime?
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([tokenPrefix])
-  @@index([revokedAt])
-}
-
-model IssueReport {
-  id             String       @id @default(cuid())
-  organizationId String
-  departmentId   String?
-  assignedDepartmentId String?
-  assignedUserId String?
-  assetId        String?
-  citizenId      String?
-  latitude       Float?
-  longitude      Float?
-  location       Unsupported("geometry(Point,4326)")?
-  address        String?
-  photoUrl       String?
-  title          String
-  description    String
-  category       String
-  status         IssueStatus  @default(OPEN)
-  priority       IssuePriority?
-  reporterEmail  String?
-  reporterName   String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  resolvedAt     DateTime?
-  slaResponseDueAt   DateTime?
-  slaResolutionDueAt DateTime?
-  slaBreached        Boolean   @default(false)
-
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  department     Department?  @relation("ReportedIssueDepartment", fields: [departmentId], references: [id])
-  assignedDepartment Department? @relation("AssignedIssueDepartment", fields: [assignedDepartmentId], references: [id])
-  asset          Asset?       @relation(fields: [assetId], references: [id])
-  citizen        Citizen?     @relation(fields: [citizenId], references: [id])
-  workOrders     WorkOrder[]
-  comments       IssueComment[]
-
-  @@index([organizationId])
-  @@index([organizationId, createdAt])
-  @@index([departmentId])
-  @@index([assignedDepartmentId])
-  @@index([assetId])
-  @@index([citizenId])
-  @@index([status])
-  @@index([priority])
-  @@index([slaBreached, status, slaResponseDueAt, slaResolutionDueAt])
-}
-
-model SLAPolicy {
-  id               String       @id @default(cuid())
-  organizationId   String
-  issueCategory    String
-  responseHours    Int
-  resolutionHours  Int
-  createdAt        DateTime     @default(now())
-
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([issueCategory])
-  @@unique([organizationId, issueCategory])
-}
-
-model Citizen {
-  id             String                @id @default(cuid())
-  email          String
-  name           String?
-  passwordHash   String
-  organizationId String
-  createdAt      DateTime              @default(now())
-
-  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  issues         IssueReport[]
-  notifications  CitizenNotification[]
-
-  @@unique([organizationId, email])
-  @@index([organizationId])
-}
-
-model IssueComment {
-  id         String      @id @default(cuid())
-  issueId    String
-  message    String
-  createdAt  DateTime    @default(now())
-  authorType String
-
-  issue      IssueReport @relation(fields: [issueId], references: [id], onDelete: Cascade)
-
-  @@index([issueId])
-}
-
-model CitizenNotification {
-  id         String    @id @default(cuid())
-  citizenId  String
-  message    String
-  read       Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-
-  citizen    Citizen   @relation(fields: [citizenId], references: [id], onDelete: Cascade)
-
-  @@index([citizenId, createdAt])
-}
-
-model District {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  geoJson        Json
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-}
-
-model Ward {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  geoJson        Json
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-}
-
-model ServiceZone {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  type           String
-  geoJson        Json
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-}
-
-model InfrastructureLayer {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  geoJson        Json
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-}
-
-model Asset {
-  id             String       @id @default(cuid())
-  organizationId String
-  departmentId   String?
-  name           String
-  type           String
-  latitude       Float?
-  longitude      Float?
-  address        String?
-  installDate    DateTime?
-  conditionScore Int?
-  status         String       @default("ACTIVE")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department     Department?  @relation(fields: [departmentId], references: [id])
-  issues         IssueReport[]
-  workOrders     WorkOrder[]
-  maintenanceSchedules MaintenanceSchedule[]
-
-  @@index([organizationId])
-  @@index([departmentId])
-}
-
-model WorkOrder {
-  id             String       @id @default(cuid())
-  organizationId String
-  assetId        String?
-  issueId        String?
-  departmentId   String?
-  title          String
-  description    String?
-  status         WorkOrderStatus @default(OPEN)
-  priority       WorkOrderPriority?
-  scheduledDate  DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  asset          Asset?       @relation(fields: [assetId], references: [id])
-  issue          IssueReport? @relation(fields: [issueId], references: [id])
-  department     Department?  @relation(fields: [departmentId], references: [id])
-
-  @@index([organizationId])
-  @@index([assetId])
-  @@index([status])
-}
-
-model MaintenanceSchedule {
-  id             String       @id @default(cuid())
-  organizationId String
-  assetId        String
-  name           String
-  frequencyDays  Int
-  lastCompleted  DateTime?
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  asset          Asset        @relation(fields: [assetId], references: [id])
-
-  @@index([organizationId])
-  @@index([assetId])
-}
-
-model Event {
-  id             String       @id @default(cuid())
-  organizationId String
-  type           String
-  entityType     String
-  entityId       String?
-  payload        Json?
-  processed      Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-  processedAt    DateTime?
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([type])
-  @@index([processed])
-  @@index([createdAt])
-  @@index([processed, createdAt])
-}
-
-model Insight {
-  id             String          @id @default(cuid())
-  organizationId String
-  type           InsightType
-  severity       InsightSeverity @default(INFO)
-  title          String
-  description    String
-  sourceEntity   String?
-  sourceId       String?
-  metadata       Json?
-  createdAt      DateTime        @default(now())
-  resolvedAt     DateTime?
-
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId, createdAt])
-  @@index([organizationId, resolvedAt])
-  @@index([type])
-  @@index([sourceEntity, sourceId])
-}
-
-model CouncilReport {
-  id             String       @id @default(cuid())
-  organizationId String
-  generatedById  String
-  reportDate     DateTime
-  summary        Json
-  createdAt      DateTime     @default(now())
-
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([organizationId, createdAt])
 }

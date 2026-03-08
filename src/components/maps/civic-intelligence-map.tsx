@@ -1,6 +1,7 @@
 "use client";
 
 import type { GeoJsonObject } from "geojson";
+import { useMemo, useState } from "react";
 import {
   Circle,
   CircleMarker,
@@ -9,13 +10,20 @@ import {
   MapContainer,
   Popup,
   TileLayer,
+  useMap,
+  useMapEvents,
 } from "react-leaflet";
+
+type IssueCategory = "pothole" | "streetlight" | "garbage" | "graffiti" | "sidewalk";
 
 type MapIssue = {
   id: string;
   title: string;
   status: string;
   priority: string | null;
+  category?: string | null;
+  description?: string | null;
+  createdAt?: string | Date | null;
   latitude: number;
   longitude: number;
 };
@@ -46,6 +54,18 @@ type CivicIntelligenceMapProps = {
   heightClassName?: string;
 };
 
+const ISSUE_CATEGORIES: IssueCategory[] = ["pothole", "streetlight", "garbage", "graffiti", "sidewalk"];
+
+type CategoryCounts = Record<IssueCategory, number>;
+
+type IssueCluster = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  total: number;
+  categoryCounts: CategoryCounts;
+};
+
 function toGeoJsonObject(value: unknown): GeoJsonObject | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -59,6 +79,62 @@ function toGeoJsonObject(value: unknown): GeoJsonObject | null {
   return value as GeoJsonObject;
 }
 
+function normalizeCategory(category: string | null | undefined): IssueCategory | null {
+  if (!category) {
+    return null;
+  }
+  const normalized = category.trim().toLowerCase();
+  if (ISSUE_CATEGORIES.includes(normalized as IssueCategory)) {
+    return normalized as IssueCategory;
+  }
+  return null;
+}
+
+function emptyCategoryCounts(): CategoryCounts {
+  return {
+    pothole: 0,
+    streetlight: 0,
+    garbage: 0,
+    graffiti: 0,
+    sidewalk: 0,
+  };
+}
+
+function categoryColor(category: string | null | undefined) {
+  const normalized = normalizeCategory(category);
+  if (normalized === "pothole") return "#dc2626";
+  if (normalized === "streetlight") return "#eab308";
+  if (normalized === "garbage") return "#16a34a";
+  if (normalized === "graffiti") return "#9333ea";
+  if (normalized === "sidewalk") return "#2563eb";
+  return "#64748b";
+}
+
+function categoryLabel(category: string | null | undefined) {
+  const normalized = normalizeCategory(category);
+  if (normalized === "streetlight") return "Streetlight";
+  if (normalized === "sidewalk") return "Sidewalk";
+  if (normalized === "garbage") return "Garbage";
+  if (normalized === "graffiti") return "Graffiti";
+  if (normalized === "pothole") return "Pothole";
+  return "Other";
+}
+
+function readableStatus(status: string) {
+  return status.replaceAll("_", " ");
+}
+
+function formatReportedDate(value: string | Date | null | undefined) {
+  if (!value) {
+    return "Unknown";
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Unknown";
+  }
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date);
+}
+
 function markerColor(priority: string | null) {
   if (priority === "URGENT") {
     return "#dc2626";
@@ -70,6 +146,67 @@ function markerColor(priority: string | null) {
     return "#ca8a04";
   }
   return "#2563eb";
+}
+
+function clusterGridSize(zoom: number) {
+  if (zoom < 9) return 0.08;
+  if (zoom < 11) return 0.04;
+  return 0.02;
+}
+
+function aggregateIssueClusters(issues: MapIssue[], zoom: number) {
+  const grid = clusterGridSize(zoom);
+  const buckets = new Map<
+    string,
+    {
+      sumLat: number;
+      sumLng: number;
+      total: number;
+      categoryCounts: CategoryCounts;
+    }
+  >();
+
+  for (const issue of issues) {
+    const keyLat = Math.floor(issue.latitude / grid);
+    const keyLng = Math.floor(issue.longitude / grid);
+    const key = `${keyLat}:${keyLng}`;
+    const existing = buckets.get(key);
+    const category = normalizeCategory(issue.category);
+
+    if (!existing) {
+      const categoryCounts = emptyCategoryCounts();
+      if (category) {
+        categoryCounts[category] += 1;
+      }
+      buckets.set(key, {
+        sumLat: issue.latitude,
+        sumLng: issue.longitude,
+        total: 1,
+        categoryCounts,
+      });
+      continue;
+    }
+
+    existing.sumLat += issue.latitude;
+    existing.sumLng += issue.longitude;
+    existing.total += 1;
+    if (category) {
+      existing.categoryCounts[category] += 1;
+    }
+  }
+
+  const clusters: IssueCluster[] = [];
+  for (const [id, bucket] of buckets.entries()) {
+    clusters.push({
+      id,
+      latitude: bucket.sumLat / bucket.total,
+      longitude: bucket.sumLng / bucket.total,
+      total: bucket.total,
+      categoryCounts: bucket.categoryCounts,
+    });
+  }
+
+  return clusters;
 }
 
 function computeHeatPoints(issues: MapIssue[]) {
@@ -88,6 +225,80 @@ function computeHeatPoints(issues: MapIssue[]) {
   }
 
   return [...buckets.values()];
+}
+
+function IssueMarkersLayer({ issues }: { issues: MapIssue[] }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useMapEvents({
+    zoomend: () => {
+      setZoom(map.getZoom());
+    },
+  });
+
+  const clusters = useMemo(() => aggregateIssueClusters(issues, zoom), [issues, zoom]);
+  const useClusters = zoom < 13;
+
+  if (useClusters) {
+    return (
+      <>
+        {clusters.map((cluster) => (
+          <CircleMarker
+            key={`cluster-${cluster.id}`}
+            center={[cluster.latitude, cluster.longitude]}
+            radius={Math.min(26, 8 + cluster.total)}
+            pathOptions={{
+              color: "#7c3aed",
+              fillColor: "#8b5cf6",
+              fillOpacity: 0.8,
+            }}
+          >
+            <Popup>
+              <div className="space-y-1 text-sm">
+                <p className="font-semibold">Cluster Summary</p>
+                <p>Total issues: {cluster.total}</p>
+                <p>Pothole: {cluster.categoryCounts.pothole}</p>
+                <p>Streetlight: {cluster.categoryCounts.streetlight}</p>
+                <p>Garbage: {cluster.categoryCounts.garbage}</p>
+                <p>Graffiti: {cluster.categoryCounts.graffiti}</p>
+                <p>Sidewalk: {cluster.categoryCounts.sidewalk}</p>
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {issues.map((issue) => {
+        const color = categoryColor(issue.category) || markerColor(issue.priority);
+        return (
+          <CircleMarker
+            key={issue.id}
+            center={[issue.latitude, issue.longitude]}
+            radius={7}
+            pathOptions={{
+              color,
+              fillColor: color,
+              fillOpacity: 0.9,
+            }}
+          >
+            <Popup>
+              <div className="space-y-1 text-sm">
+                <strong>{issue.title || categoryLabel(issue.category)}</strong>
+                <p>Category: {categoryLabel(issue.category)}</p>
+                <p>{issue.description || "No description provided."}</p>
+                <p>Status: {readableStatus(issue.status)}</p>
+                <p>Reported: {formatReportedDate(issue.createdAt)}</p>
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+    </>
+  );
 }
 
 export default function CivicIntelligenceMap({
@@ -117,28 +328,7 @@ export default function CivicIntelligenceMap({
         />
         <LayersControl position="topright">
           <LayersControl.Overlay checked name="Issue Markers">
-            <>
-              {issues.map((issue) => (
-                <CircleMarker
-                  key={issue.id}
-                  center={[issue.latitude, issue.longitude]}
-                  radius={6}
-                  pathOptions={{
-                    color: markerColor(issue.priority),
-                    fillColor: markerColor(issue.priority),
-                    fillOpacity: 0.85,
-                  }}
-                >
-                  <Popup>
-                    <div className="space-y-1">
-                      <p className="font-medium">{issue.title}</p>
-                      <p>Status: {issue.status}</p>
-                      <p>Priority: {issue.priority ?? "Unset"}</p>
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              ))}
-            </>
+            <IssueMarkersLayer issues={issues} />
           </LayersControl.Overlay>
 
           <LayersControl.Overlay checked name="Issue Heatmap">

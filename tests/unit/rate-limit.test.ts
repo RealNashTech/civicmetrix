@@ -30,7 +30,7 @@ async function loadRateLimitModule(options: {
 
   process.env.NODE_ENV = options.production ? "production" : "test";
   if (options.upstashConfigured) {
-    process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
+    process.env.UPSTASH_REDIS_REST_URL = "https://prod-test.upstash.io";
     process.env.UPSTASH_REDIS_REST_TOKEN = "token";
   } else {
     delete process.env.UPSTASH_REDIS_REST_URL;
@@ -54,18 +54,15 @@ describe("security rate limit", () => {
     await expect(enforceRateLimitByIdentifier("auth/register", "ip-1")).resolves.toBeUndefined();
   });
 
-  it("rate limit blocks after max requests", async () => {
-    const { enforceRateLimitByIdentifier, AuthorizationError } = await loadRateLimitModule({
+  it("rate limit allows requests when backend is not configured", async () => {
+    const { enforceRateLimitByIdentifier } = await loadRateLimitModule({
       upstashConfigured: false,
     });
 
-    for (let i = 0; i < 10; i += 1) {
+    for (let i = 0; i < 100; i += 1) {
       await enforceRateLimitByIdentifier("auth/register", "ip-2");
     }
-
-    await expect(enforceRateLimitByIdentifier("auth/register", "ip-2")).rejects.toBeInstanceOf(
-      AuthorizationError,
-    );
+    await expect(enforceRateLimitByIdentifier("auth/register", "ip-2")).resolves.toBeUndefined();
   });
 
   it("rate limit throws AuthorizationError when exceeded", async () => {
@@ -79,17 +76,14 @@ describe("security rate limit", () => {
     );
   });
 
-  it("redis failure path uses local fallback throttle when backend is unavailable", async () => {
-    const { enforceRateLimitByIdentifier, AuthorizationError } = await loadRateLimitModule({
-      upstashConfigured: false,
+  it("redis transport errors fail open", async () => {
+    const { enforceRateLimitByIdentifier } = await loadRateLimitModule({
+      upstashConfigured: true,
+      limitImpl: async () => {
+        throw new Error("redis unavailable");
+      },
     });
 
-    for (let i = 0; i < 20; i += 1) {
-      await enforceRateLimitByIdentifier("issue submit", "ip-4");
-    }
-
-    await expect(enforceRateLimitByIdentifier("issue submit", "ip-4")).rejects.toBeInstanceOf(
-      AuthorizationError,
-    );
+    await expect(enforceRateLimitByIdentifier("issue submit", "ip-4")).resolves.toBeUndefined();
   });
 });

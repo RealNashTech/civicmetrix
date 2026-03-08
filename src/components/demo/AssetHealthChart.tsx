@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
   BarChart,
   Bar,
@@ -16,20 +17,30 @@ type AssetHealthDatum = {
 }
 
 function AssetHealthChart({ data }: { data: AssetHealthDatum[] }) {
-  if (typeof window === "undefined") return null
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return (
+      <div style={{ height: 400 }} />
+    )
+  }
+
+  console.log("Chart data:", data)
 
   if (!data || data.length === 0) {
     return (
       <div
-        style={{ height: 320 }}
+        style={{ height: 400 }}
         className="border rounded flex items-center justify-center text-sm text-slate-500"
       >
         No data available
       </div>
     )
   }
-
-  console.log("Asset chart data", data)
 
   const safeData = data
     .map((item) => ({
@@ -47,7 +58,7 @@ function AssetHealthChart({ data }: { data: AssetHealthDatum[] }) {
   if (!safeData.length) {
     return (
       <div
-        style={{ height: 320 }}
+        style={{ height: 400 }}
         className="border rounded flex items-center justify-center text-sm text-slate-500"
       >
         No data available
@@ -56,7 +67,7 @@ function AssetHealthChart({ data }: { data: AssetHealthDatum[] }) {
   }
 
   return (
-    <div style={{ width: "100%", height: 320 }}>
+    <div style={{ width: "100%", height: 400 }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={safeData} layout="vertical" margin={{ left: 24, right: 16 }}>
           <XAxis type="number" domain={[0, 100]} />

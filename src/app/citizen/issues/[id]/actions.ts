@@ -69,6 +69,9 @@ export async function markNotificationsRead() {
   await dbSystem().citizenNotification.updateMany({
     where: {
       citizenId: citizen.citizenId,
+      citizen: {
+        organizationId: citizen.organizationId,
+      },
       read: false,
     },
     data: {

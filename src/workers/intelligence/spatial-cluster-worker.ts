@@ -13,6 +13,11 @@ type ClusterRow = {
   clusterCount: number;
   centerLatitude: number;
   centerLongitude: number;
+  potholeCount: number;
+  streetlightCount: number;
+  garbageCount: number;
+  graffitiCount: number;
+  sidewalkCount: number;
 };
 
 function resolveSeverity(clusterCount: number) {
@@ -48,6 +53,7 @@ export async function runSpatialClusterWorker() {
     clustered AS (
       SELECT
         "organizationId",
+        "category",
         "latitude",
         "longitude",
         ST_ClusterDBSCAN(geom, eps => ${RADIUS_METERS}, minpoints => ${MIN_CLUSTER_SIZE})
@@ -59,7 +65,12 @@ export async function runSpatialClusterWorker() {
       cluster_id::int AS "clusterId",
       COUNT(*)::int AS "clusterCount",
       AVG("latitude")::double precision AS "centerLatitude",
-      AVG("longitude")::double precision AS "centerLongitude"
+      AVG("longitude")::double precision AS "centerLongitude",
+      SUM(CASE WHEN LOWER(COALESCE("category", '')) = 'pothole' THEN 1 ELSE 0 END)::int AS "potholeCount",
+      SUM(CASE WHEN LOWER(COALESCE("category", '')) = 'streetlight' THEN 1 ELSE 0 END)::int AS "streetlightCount",
+      SUM(CASE WHEN LOWER(COALESCE("category", '')) IN ('garbage', 'trash') THEN 1 ELSE 0 END)::int AS "garbageCount",
+      SUM(CASE WHEN LOWER(COALESCE("category", '')) = 'graffiti' THEN 1 ELSE 0 END)::int AS "graffitiCount",
+      SUM(CASE WHEN LOWER(COALESCE("category", '')) = 'sidewalk' THEN 1 ELSE 0 END)::int AS "sidewalkCount"
     FROM clustered
     WHERE cluster_id IS NOT NULL
     GROUP BY "organizationId", cluster_id
@@ -94,6 +105,14 @@ export async function runSpatialClusterWorker() {
       centerLongitude: Number(cluster.centerLongitude.toFixed(6)),
       clusterCount: cluster.clusterCount,
       radiusMeters: RADIUS_METERS,
+      total: cluster.clusterCount,
+      categories: {
+        pothole: cluster.potholeCount,
+        streetlight: cluster.streetlightCount,
+        garbage: cluster.garbageCount,
+        graffiti: cluster.graffitiCount,
+        sidewalk: cluster.sidewalkCount,
+      },
     };
 
     await createInsight({

@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { buildContentSecurityPolicy } from "./src/lib/security/csp";
 import { validateEnv } from "./src/lib/config/env";
 
 validateEnv();
@@ -24,10 +23,6 @@ const securityHeaders = [
   {
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains; preload",
-  },
-  {
-    key: "Content-Security-Policy",
-    value: buildContentSecurityPolicy(),
   },
 ];
 
