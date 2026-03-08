@@ -1,4 +1,5 @@
 import { dbSystem } from "@/lib/db"
+import { tenantDb } from "@/lib/tenantDb"
 import IssueHeatmap from "@/components/demo/IssueHeatmap"
 import GrantFlowChart from "@/components/demo/GrantFlowChart"
 import AssetHealthChart from "@/components/demo/AssetHealthChart"
@@ -83,7 +84,7 @@ export default async function PublicCityPage({
   }> = []
 
   try {
-    await client.$transaction(async (tx) => {
+    await tenantDb(organization.id, async (tx) => {
       await tx.$executeRaw`
         SELECT set_config('app.current_tenant', ${organization.id}, true)
       `
@@ -255,11 +256,13 @@ export default async function PublicCityPage({
     }
   }
 
-  console.log("PUBLIC DASHBOARD DATA", {
-    issuesCount,
-    grantsCount,
-    assetsCount,
-  })
+  if (process.env.NODE_ENV !== "production") {
+    console.log("PUBLIC DASHBOARD DATA", {
+      issuesCount,
+      grantsCount,
+      assetsCount,
+    })
+  }
 
   return (
     <main className="max-w-7xl mx-auto p-6 space-y-6">
