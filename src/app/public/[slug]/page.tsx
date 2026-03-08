@@ -1,7 +1,5 @@
-import { db } from "@/lib/db"
-import IssueHeatmap from "@/components/demo/IssueHeatmap"
-import GrantFlowChart from "@/components/demo/GrantFlowChart"
-import AssetHealthChart from "@/components/demo/AssetHealthChart"
+import { dbSystem } from "@/lib/db"
+import DemoVisualizationBoundary from "@/components/demo/DemoVisualizationBoundary"
 import Link from "next/link"
 
 function formatCurrency(amount: number) {
@@ -11,29 +9,31 @@ function formatCurrency(amount: number) {
 export default async function PublicCityPage({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const client = db()
-
-  let organization = null
+  const { slug } = await params
+  const client = dbSystem()
+  let organization: { id: string; name: string; slug: string } | null = null
 
   try {
     organization = await client.organization.findUnique({
-      where: { slug: params.slug },
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
     })
-  } catch (error) {
-    console.error("Organization query failed:", error)
+  } catch (err) {
+    console.error("Organization query failed", err)
   }
 
   if (!organization) {
     return (
       <div className="p-10">
-        <h1 className="text-2xl font-semibold">
-          Demo city not available
-        </h1>
-
+        <h1 className="text-2xl font-semibold">Demo City Not Found</h1>
         <p className="text-slate-500 mt-2">
-          The demo organization could not be loaded.
+          No organization exists for slug: {slug}
         </p>
       </div>
     )
@@ -66,15 +66,28 @@ export default async function PublicCityPage({
     console.error("KPI query failed:", error)
   }
 
-  let grants: Array<{
+  let publicGrants: Array<{
     id: string
     name: string
     amount: unknown
-    departmentId: string | null
+    departmentName: string
+  }> = []
+
+  let grants: Array<{
+    department: string
+    funding: number
+  }> = []
+  let grantRows: Array<{
+    id: string
+    name: string
+    amount: unknown
+    department: {
+      name: string
+    } | null
   }> = []
 
   try {
-    grants = await client.grant.findMany({
+    grantRows = await client.grant.findMany({
       where: {
         organizationId: organization.id,
         isPublic: true,
@@ -84,35 +97,69 @@ export default async function PublicCityPage({
         id: true,
         name: true,
         amount: true,
-        departmentId: true,
+        department: {
+          select: {
+            name: true,
+          },
+        },
       },
     })
+
+    publicGrants = grantRows.map((grant) => ({
+      id: grant.id,
+      name: grant.name,
+      amount: grant.amount,
+      departmentName: grant.department?.name ?? "Unassigned",
+    }))
+
+    const grantFundingByDepartment = new Map<string, number>()
+    for (const grant of publicGrants) {
+      grantFundingByDepartment.set(
+        grant.departmentName,
+        (grantFundingByDepartment.get(grant.departmentName) ?? 0) +
+          Number(grant.amount)
+      )
+    }
+
+    grants = Array.from(grantFundingByDepartment.entries())
+      .map(([department, funding]) => ({
+        department,
+        funding,
+      }))
+      .filter((grant) => Number.isFinite(grant.funding))
   } catch (error) {
     console.error("Grant query failed:", error)
   }
 
+  let issues: Array<{ latitude: number; longitude: number }> = []
   let issueRows: Array<{ latitude: number | null; longitude: number | null }> = []
 
   try {
     issueRows = await client.issueReport.findMany({
       where: {
         organizationId: organization.id,
-        latitude: { not: null },
-        longitude: { not: null },
       },
       select: {
         latitude: true,
         longitude: true,
       },
     })
+
+    issues = issueRows
+      .map((issue) => ({
+        latitude:
+          issue.latitude == null ? Number.NaN : Number(issue.latitude),
+        longitude:
+          issue.longitude == null ? Number.NaN : Number(issue.longitude),
+      }))
+      .filter(
+        (issue) =>
+          Number.isFinite(issue.latitude) &&
+          Number.isFinite(issue.longitude)
+      )
   } catch (error) {
     console.error("Issue report query failed:", error)
   }
-
-  const issues = issueRows.map((i) => ({
-    latitude: Number(i.latitude),
-    longitude: Number(i.longitude),
-  }))
 
   let kpiHistory: Array<{ kpiId: string; value: unknown; recordedAt: Date }> = []
 
@@ -163,61 +210,14 @@ export default async function PublicCityPage({
     console.error("Insight query failed:", error)
   }
 
-  let departments: Array<{ id: string; name: string }> = []
-
-  try {
-    departments = await client.department.findMany({
-      where: {
-        organizationId: organization.id,
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    })
-  } catch (error) {
-    console.error("Department query failed:", error)
-  }
-
-  const grantFundingByDepartment = await Promise.all(
-    departments.map(async (department) => {
-      try {
-        const departmentGrants = await client.grant.findMany({
-          where: {
-            organizationId: organization.id,
-            departmentId: department.id,
-          },
-          select: {
-            amount: true,
-          },
-        })
-
-        const total = departmentGrants.reduce((sum, grant) => sum + Number(grant.amount), 0)
-
-        return {
-          department: department.name,
-          funding: total,
-        }
-      } catch (error) {
-        console.error(`Grant distribution query failed for ${department.name}:`, error)
-        return {
-          department: department.name,
-          funding: 0,
-        }
-      }
-    })
-  )
-
-  let assets: Array<{
+  let assetRows: Array<{
     id: string
     name: string
     conditionScore: number | null
-    latitude: number | null
-    longitude: number | null
   }> = []
 
   try {
-    assets = await client.asset.findMany({
+    assetRows = await client.asset.findMany({
       where: {
         organizationId: organization.id,
       },
@@ -225,42 +225,55 @@ export default async function PublicCityPage({
         id: true,
         name: true,
         conditionScore: true,
-        latitude: true,
-        longitude: true,
       },
     })
   } catch (error) {
     console.error("Asset query failed:", error)
   }
 
-  const assetHealth = {
-    good: 0,
-    warning: 0,
-    critical: 0,
-  }
+  const assets = assetRows
+    .map((asset) => ({
+      name: asset.name,
+      conditionScore: Number(asset.conditionScore ?? Number.NaN),
+    }))
+    .filter((asset) => Number.isFinite(asset.conditionScore))
 
-  assets.forEach((asset) => {
-    const score = Number(asset.conditionScore ?? 0)
-    if (score >= 70) {
-      assetHealth.good++
-    } else if (score >= 40) {
-      assetHealth.warning++
-    } else {
-      assetHealth.critical++
-    }
-  })
+  const issueData = issueRows.map(i => ({
+    latitude: i.latitude,
+    longitude: i.longitude
+  }))
+    .map((issue) => ({
+      latitude:
+        issue.latitude == null ? Number.NaN : Number(issue.latitude),
+      longitude:
+        issue.longitude == null ? Number.NaN : Number(issue.longitude),
+    }))
+    .filter(
+      (issue) =>
+        Number.isFinite(issue.latitude) &&
+        Number.isFinite(issue.longitude)
+    )
 
-  const assetHealthChartData = [
-    { name: "Good Condition", value: assetHealth.good },
-    { name: "Moderate Risk", value: assetHealth.warning },
-    { name: "Critical", value: assetHealth.critical },
-  ]
+  const grantData = grantRows.map(g => ({
+    department: g.department?.name ?? "Unknown",
+    amount: Number(g.amount)
+  }))
+    .filter((grant) => Number.isFinite(grant.amount))
 
-  const highRiskAssets = assets
+  const assetData = assetRows.map(a => ({
+    name: a.name,
+    conditionScore: Number(a.conditionScore)
+  }))
+    .filter((asset) => Number.isFinite(asset.conditionScore))
+
+  const highRiskAssets = assetRows
     .filter((a) => Number(a.conditionScore ?? 0) < 40)
     .slice(0, 5)
 
-  const totalGrantFunding = grants.reduce((total, grant) => total + Number(grant.amount), 0)
+  const totalGrantFunding = publicGrants.reduce(
+    (total, grant) => total + Number(grant.amount),
+    0
+  )
   const averageKpiValue =
     kpis.length > 0 ? kpis.reduce((total, kpi) => total + Number(kpi.value), 0) / kpis.length : 0
   const kpisOnTarget = kpis.filter((kpi) => kpi.target != null && Number(kpi.value) >= Number(kpi.target)).length
@@ -298,6 +311,12 @@ export default async function PublicCityPage({
         return "text-slate-600"
     }
   }
+
+  console.log("PUBLIC DASHBOARD DATA", {
+    issues: issues?.length,
+    grants: grants?.length,
+    assets: assets?.length,
+  })
 
   return (
     <main className="mx-auto max-w-6xl px-6 py-16">
@@ -384,15 +403,11 @@ export default async function PublicCityPage({
         )}
       </section>
 
-      <section className="mt-16">
-        <h2 className="text-xl font-semibold">Civic Issue Map</h2>
-
-        <p className="text-sm text-slate-500 mt-1">
-          Live geographic view of reported civic issues.
-        </p>
-
-        <IssueHeatmap issues={issues} />
-      </section>
+      <DemoVisualizationBoundary
+        issueData={issueData}
+        grantData={grantData}
+        assetData={assetData}
+      />
 
       <section className="mt-16">
         <h2 className="text-xl font-semibold">Civic Risk Engine</h2>
@@ -430,7 +445,7 @@ export default async function PublicCityPage({
         <h2 className="text-xl font-semibold">Grant Funding</h2>
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {grants.map((grant) => (
+          {publicGrants.map((grant) => (
             <div key={grant.id} className="rounded-lg border p-4">
               <p className="font-medium">{grant.name}</p>
               <p className="text-sm text-slate-500">
@@ -439,7 +454,7 @@ export default async function PublicCityPage({
             </div>
           ))}
         </div>
-        {grants.length === 0 && (
+        {publicGrants.length === 0 && (
           <p className="text-sm text-slate-500 mt-4">
             No public grants available.
           </p>
@@ -448,53 +463,25 @@ export default async function PublicCityPage({
 
       <section className="mt-16">
         <h2 className="text-xl font-semibold">
-          Grant Funding Distribution
+          High Risk Infrastructure
         </h2>
 
-        <p className="text-sm text-slate-500 mt-1">
-          Visualization of grant funding across city departments.
-        </p>
+        <ul className="space-y-2 mt-6">
+          {highRiskAssets.map((asset) => (
+            <li
+              key={asset.id}
+              className="border rounded p-3"
+            >
+              <p className="font-medium">
+                {asset.name}
+              </p>
 
-        <GrantFlowChart data={grantFundingByDepartment} />
-      </section>
-
-      <section className="mt-16">
-        <h2 className="text-xl font-semibold">
-          Infrastructure Health Dashboard
-        </h2>
-
-        <p className="text-sm text-slate-500 mt-1">
-          Condition scores for city infrastructure assets.
-        </p>
-
-        <div className="grid md:grid-cols-2 gap-8 mt-6">
-          <div>
-            <AssetHealthChart data={assetHealthChartData} />
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-3">
-              High Risk Infrastructure
-            </h3>
-
-            <ul className="space-y-2">
-              {highRiskAssets.map((asset) => (
-                <li
-                  key={asset.id}
-                  className="border rounded p-3"
-                >
-                  <p className="font-medium">
-                    {asset.name}
-                  </p>
-
-                  <p className="text-sm text-red-600">
-                    Condition Score: {asset.conditionScore ?? 0}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+              <p className="text-sm text-red-600">
+                Condition Score: {asset.conditionScore ?? 0}
+              </p>
+            </li>
+          ))}
+        </ul>
       </section>
     </main>
   )

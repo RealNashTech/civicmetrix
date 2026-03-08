@@ -4,10 +4,12 @@ const DIRECTIVES: Record<string, string[]> = {
   "frame-ancestors": ["'none'"],
   "object-src": ["'none'"],
   "script-src": ["'self'"],
-  "style-src": ["'self'"],
+  "style-src": ["'self'", "'unsafe-inline'"],
   "img-src": ["'self'", "data:", "https:"],
   "font-src": ["'self'", "data:"],
   "connect-src": ["'self'", "https:"],
+  "worker-src": ["'self'", "blob:"],
+  "child-src": ["'self'", "blob:"],
   "form-action": ["'self'"],
 };
 

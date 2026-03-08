@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import PublicGrantCard from "@/components/public/PublicGrantCard"
 import PublicEmptyState from "@/components/public/PublicEmptyState"
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug"
@@ -7,22 +7,24 @@ import GrantTimelineChart from "@/components/public/GrantTimelineChart"
 export const revalidate = 300
 
 interface PageProps {
-  params: {
+  params: Promise<{
     slug: string
-  }
-  searchParams?: {
+  }>
+  searchParams?: Promise<{
     page?: string
-  }
+  }>
 }
 
 export default async function PublicGrantsPage({ params, searchParams }: PageProps) {
+  const resolvedParams = await params
+  const resolvedSearchParams = await searchParams
 
-  const parsedPage = Number(searchParams?.page ?? 1)
+  const parsedPage = Number(resolvedSearchParams?.page ?? 1)
   const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
   const PAGE_SIZE = 10
 
-  const organization = await getOrganizationBySlug(params.slug)
-  const totalGrants = await db().grant.count({
+  const organization = await getOrganizationBySlug(resolvedParams.slug)
+  const totalGrants = await dbSystem().grant.count({
     where: {
       organizationId: organization.id,
       isPublic: true
@@ -30,7 +32,7 @@ export default async function PublicGrantsPage({ params, searchParams }: PagePro
   })
   const totalPages = Math.max(1, Math.ceil(totalGrants / PAGE_SIZE))
 
-  const grants = await db().grant.findMany({
+  const grants = await dbSystem().grant.findMany({
     where: {
       organizationId: organization.id,
       isPublic: true
@@ -77,14 +79,14 @@ export default async function PublicGrantsPage({ params, searchParams }: PagePro
       </p>
       <div className="flex gap-4 pt-2">
         <a
-          href={`/public/${params.slug}/grants.csv`}
+          href={`/public/${resolvedParams.slug}/grants.csv`}
           className="text-sm px-3 py-2 border rounded-md hover:bg-gray-50"
         >
           Download CSV
         </a>
 
         <a
-          href={`/public/${params.slug}/grants.json`}
+          href={`/public/${resolvedParams.slug}/grants.json`}
           className="text-sm px-3 py-2 border rounded-md hover:bg-gray-50"
         >
           JSON API

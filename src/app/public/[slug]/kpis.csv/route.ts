@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug"
 
 type CsvKpiRow = {
@@ -51,7 +51,7 @@ export async function GET(
 
   const org = await getOrganizationBySlug(resolvedParams.slug)
 
-  const kpis = await db().kPI.findMany({
+  const kpis = await dbSystem().kPI.findMany({
     where: {
       organizationId: org.id,
       isPublic: true

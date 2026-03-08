@@ -1,10 +1,23 @@
+import { auth } from "@/lib/auth"
+import { requireOrganization } from "@/lib/auth/require-org"
 import { dbSystem } from "@/lib/db"
+import { hasMinimumRole } from "@/lib/permissions"
+import { NextResponse } from "next/server"
 
 export async function GET() {
-  const org = await dbSystem().organization.findFirst()
+  const session = await auth()
+  if (!session?.user?.role || !hasMinimumRole(session.user.role, "ADMIN")) {
+    return NextResponse.json({ error: "Forbidden." }, { status: 403 })
+  }
+  const organizationId = requireOrganization(session)
+
+  const org = await dbSystem().organization.findUnique({
+    where: { id: organizationId },
+    select: { id: true, name: true },
+  })
 
   if (!org) {
-    return Response.json(
+    return NextResponse.json(
       {
         organization: null,
         summary: {
@@ -20,37 +33,35 @@ export async function GET() {
     )
   }
 
-  const kpis = await dbSystem().kPI.findMany({
-    where: { organizationId: org.id },
-  })
+  const [kpiCount, grantCount, issueCount, assetCount, activeRiskCount] = await Promise.all([
+    dbSystem().kPI.count({
+      where: { organizationId },
+    }),
+    dbSystem().grant.count({
+      where: { organizationId },
+    }),
+    dbSystem().issueReport.count({
+      where: { organizationId },
+    }),
+    dbSystem().asset.count({
+      where: { organizationId },
+    }),
+    dbSystem().insight.count({
+      where: {
+        organizationId,
+        resolvedAt: null,
+      },
+    }),
+  ])
 
-  const grants = await dbSystem().grant.findMany({
-    where: { organizationId: org.id },
-  })
-
-  const issues = await dbSystem().issueReport.findMany({
-    where: { organizationId: org.id },
-  })
-
-  const assets = await dbSystem().asset.findMany({
-    where: { organizationId: org.id },
-  })
-
-  const insights = await dbSystem().insight.findMany({
-    where: {
-      organizationId: org.id,
-      resolvedAt: null,
-    },
-  })
-
-  return Response.json({
+  return NextResponse.json({
     organization: org.name,
     summary: {
-      kpis: kpis.length,
-      grants: grants.length,
-      issues: issues.length,
-      assets: assets.length,
-      activeRisks: insights.length,
+      kpis: kpiCount,
+      grants: grantCount,
+      issues: issueCount,
+      assets: assetCount,
+      activeRisks: activeRiskCount,
     },
     generatedAt: new Date(),
   })

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import IssueMap from "@/components/maps/issue-map";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -13,13 +13,13 @@ export const revalidate = 300;
 export default async function PublicIssuesPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
-  const publicPrograms = await db().program.findMany({
+  const publicPrograms = await dbSystem().program.findMany({
     where: { organizationId: organization.id, isPublic: true },
     select: { departmentId: true },
   });
   const publicDepartmentIds = [...new Set(publicPrograms.map((program) => program.departmentId))];
 
-  const issues = await db().issueReport.findMany({
+  const issues = await dbSystem().issueReport.findMany({
     where: {
       organizationId: organization.id,
       departmentId: { in: publicDepartmentIds },

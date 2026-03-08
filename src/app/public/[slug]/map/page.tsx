@@ -1,8 +1,8 @@
 import Link from "next/link";
 
-import CivicIntelligenceMap from "@/components/maps/civic-intelligence-map";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
+import PublicMapClient from "./PublicMapClient";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -14,14 +14,14 @@ export default async function PublicMapPage({ params }: Props) {
   const resolvedParams = await params;
   const organization = await getOrganizationBySlug(resolvedParams.slug);
 
-  const publicPrograms = await db().program.findMany({
+  const publicPrograms = await dbSystem().program.findMany({
     where: { organizationId: organization.id, isPublic: true },
     select: { departmentId: true },
   });
   const publicDepartmentIds = [...new Set(publicPrograms.map((program) => program.departmentId))];
 
   const [issues, serviceZones, infrastructureLayers] = await Promise.all([
-    db().issueReport.findMany({
+    dbSystem().issueReport.findMany({
       where: {
         organizationId: organization.id,
         departmentId: { in: publicDepartmentIds },
@@ -38,11 +38,11 @@ export default async function PublicMapPage({ params }: Props) {
         longitude: true,
       },
     }),
-    db().serviceZone.findMany({
+    dbSystem().serviceZone.findMany({
       where: { organizationId: organization.id },
       select: { id: true, name: true, type: true, geoJson: true },
     }),
-    db().infrastructureLayer.findMany({
+    dbSystem().infrastructureLayer.findMany({
       where: { organizationId: organization.id },
       select: { id: true, name: true, geoJson: true },
     }),
@@ -69,10 +69,8 @@ export default async function PublicMapPage({ params }: Props) {
         </p>
       </div>
 
-      <CivicIntelligenceMap
+      <PublicMapClient
         issues={mappedIssues}
-        districts={[]}
-        wards={[]}
         serviceZones={serviceZones}
         infrastructureLayers={infrastructureLayers}
       />

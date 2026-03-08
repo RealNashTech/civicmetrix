@@ -1,8 +1,8 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { notFound } from "next/navigation"
 
 export async function getOrganizationBySlug(slug: string) {
-  const org = await db().organization.findUnique({
+  const org = await dbSystem().organization.findUnique({
     where: { slug },
     select: {
       id: true,

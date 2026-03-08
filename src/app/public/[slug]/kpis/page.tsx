@@ -1,5 +1,4 @@
-import { db } from "@/lib/db";
-import { notFound } from "next/navigation";
+import { dbSystem } from "@/lib/db";
 import PublicKpiCard from "@/components/public/PublicKpiCard";
 import PublicEmptyState from "@/components/public/PublicEmptyState";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
@@ -20,7 +19,7 @@ export default async function PublicKpiPage({ params, searchParams }: Props) {
 
   const org = await getOrganizationBySlug(resolvedParams.slug);
 
-  const totalKpis = await db().kPI.count({
+  const totalKpis = await dbSystem().kPI.count({
     where: {
       organizationId: org.id,
       isPublic: true
@@ -28,7 +27,7 @@ export default async function PublicKpiPage({ params, searchParams }: Props) {
   })
   const totalPages = Math.max(1, Math.ceil(totalKpis / PAGE_SIZE))
 
-  const kpis = await db().kPI.findMany({
+  const kpis = await dbSystem().kPI.findMany({
     where: {
       organizationId: org.id,
       isPublic: true,

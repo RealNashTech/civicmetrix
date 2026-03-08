@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { dbSystem } from "@/lib/db";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug"
 
 type CsvGrantRow = {
@@ -45,7 +45,7 @@ export async function GET(
 
   const org = await getOrganizationBySlug(resolvedParams.slug)
 
-  const grants = await db().grant.findMany({
+  const grants = await dbSystem().grant.findMany({
     where: {
       organizationId: org.id,
       isPublic: true

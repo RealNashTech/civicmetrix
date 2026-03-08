@@ -43,7 +43,7 @@ async function resolveTenantId(): Promise<string | null> {
 async function resolveTenantIdForExecution(): Promise<string> {
   const tenantId = await resolveTenantId()
   if (!tenantId) {
-    throw new Error("Tenant context not set")
+    throw new Error("Tenant context required for db() access")
   }
 
   return tenantId
