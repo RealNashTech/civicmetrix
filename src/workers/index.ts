@@ -15,6 +15,7 @@ import { runGrantRiskWorker } from "@/workers/intelligence/grant-risk-worker";
 import { runIssueAnomalyWorker } from "@/workers/intelligence/issue-anomaly-worker";
 import { runKpiTrendWorker } from "@/workers/intelligence/kpi-trend-worker";
 import { runSpatialClusterWorker } from "@/workers/intelligence/spatial-cluster-worker";
+import { runTransparencyWorker } from "@/workers/intelligence/transparency-worker";
 import { runIssueSlaWorker } from "@/workers/issue-sla-worker";
 import { runMaintenanceSchedulerWorker } from "@/workers/maintenance-scheduler-worker";
 import { runReportSchedulerWorker } from "@/workers/report-scheduler";
@@ -341,6 +342,22 @@ async function scheduleRepeatableJobs(
     },
   );
 
+  await civicIntelligenceQueue.add(
+    "run-transparency-worker",
+    {},
+    {
+      jobId: "repeat:transparency-worker:24h",
+      repeat: { every: 24 * 60 * 60 * 1000 },
+      attempts: JOB_ATTEMPTS,
+      backoff: {
+        type: "exponential",
+        delay: 1_000,
+      },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    },
+  );
+
   await dataSourceSyncQueue.add(
     "run-data-source-sync-worker",
     {},
@@ -497,6 +514,11 @@ async function bootstrapWorkers() {
 
         if (job.name === "run-spatial-cluster-worker") {
           await runSpatialClusterWorker();
+          return;
+        }
+
+        if (job.name === "run-transparency-worker") {
+          await runTransparencyWorker();
           return;
         }
 

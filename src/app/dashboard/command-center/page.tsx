@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { summarizeTrend } from "@/lib/kpi-trends";
 import { db } from "@/lib/db";
+import { getTransparencyInsights } from "@/lib/intelligence/transparency-insights";
+import { calculateTransparencyScore } from "@/lib/transparency/transparency-engine";
 
 type ClusterCenter = {
   id: string;
@@ -71,6 +73,7 @@ export default async function CommandCenterPage() {
     wards,
     serviceZones,
     infrastructureLayers,
+    transparency,
   ] = await Promise.all([
     db().alert.findMany({
       where: {
@@ -180,7 +183,10 @@ export default async function CommandCenterPage() {
       where: { organizationId: user.organizationId },
       select: { id: true, name: true, geoJson: true },
     }),
+    calculateTransparencyScore(user.organizationId),
   ]);
+
+  const transparencyInsights = await getTransparencyInsights(user.organizationId, transparency);
 
   const kpiIds = kpis.map((kpi) => kpi.id);
   const kpiHistory = kpiIds.length
@@ -235,6 +241,58 @@ export default async function CommandCenterPage() {
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs text-slate-500">Tracked KPIs</p>
             <p className="text-xl font-semibold text-slate-900">{kpis.length}</p>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Transparency Intelligence">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs text-slate-500">Transparency Score</p>
+            <p className="text-xl font-semibold text-slate-900">
+              {transparency.score} <span className="text-sm text-slate-500">{transparency.grade}</span>
+            </p>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs text-slate-500">Reporting Completeness</p>
+            <p className="text-xl font-semibold text-slate-900">{transparency.reportingCompleteness}%</p>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs text-slate-500">Data Availability</p>
+            <p className="text-xl font-semibold text-slate-900">{transparency.dataAvailability}%</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Reporting Gaps
+            </p>
+            <div className="space-y-2">
+              {transparency.gaps.length > 0 ? (
+                transparency.gaps.slice(0, 3).map((gap) => (
+                  <div key={gap} className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                    {gap}
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                  No material transparency gaps detected.
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Intelligence Signals
+            </p>
+            <div className="space-y-2">
+              {transparencyInsights.slice(0, 3).map((insight) => (
+                <div key={insight} className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                  {insight}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </Card>

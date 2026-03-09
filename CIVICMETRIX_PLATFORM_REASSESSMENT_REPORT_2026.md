@@ -1,367 +1,513 @@
 # CivicMetrix Platform Reassessment Report 2026
 
-Date: March 9, 2026 (UTC)
-
 ## Executive Summary
 
-CivicMetrix is no longer a concept-only civic dashboard. The repository contains a real multi-tenant municipal application with a substantial Prisma domain model, queue-backed background processing, staff dashboards, public transparency pages, data import tooling, and early civic intelligence jobs.
+CivicMetrix is a multi-tenant civic operations platform built on Next.js 16, Prisma, PostgreSQL, Redis-backed BullMQ workers, PM2, and NGINX. The current production platform is no longer a prototype-grade dashboard. It is an integrated municipal operations environment that combines internal administrative workflows, public transparency publishing, background intelligence processing, tenant-aware APIs, and file or connector-driven ingestion pipelines.
 
-The platform is also not yet stable enough to describe as pilot-ready. The current production deployment on `civicmetrix.com` has a broken root experience returning `500 Internal Server Error`, and the local production runtime is currently reproducible with `InvariantError: The manifests singleton was not initialized`. That runtime instability materially lowers the deployment maturity assessment even though many product and data subsystems are present.
+The live production runtime currently serves from a Next.js App Router application behind NGINX, managed by PM2. Health verification completed successfully against both `http://localhost:3000` and `http://localhost:3000/api/health`, with PM2 showing a single stable `civicmetrix` process online. The production deployment workflow is standardized around `npm run deploy:prod`, which clears `.next`, runs a Webpack-based production build, and restarts the PM2 application.
 
-The clearest conclusion from the audit is this:
+From an architecture perspective, CivicMetrix has matured into four primary product pillars:
 
-- CivicMetrix has a broad platform surface area
-- Several subsystems are genuinely implemented
-- A smaller number are production-grade
-- The immediate problem is not feature absence, but runtime stability, operational hardening, and finishing generalized ingestion
+1. Internal municipal operations and administrative dashboards
+2. Public transparency dashboards and citizen issue reporting
+3. Structured and semi-structured data ingestion pipelines
+4. A background civic intelligence engine that produces metrics, insights, and operational signals
 
-## Current Classification
+The most important conclusion of this reassessment is that the platform has real breadth. It supports grants, KPIs, budgets, documents, issues, work orders, infrastructure condition, public dashboards, role-aware administration, scheduled reports, external data connectors, and automated intelligence workers. The next phase should not be about proving viability. It should be about product hardening, workflow depth, enterprise controls, and release governance.
 
-- Maturity score: **61 / 100**
-- Classification: **Pre-Production**
+## Platform Overview
 
-This score reflects a strong codebase with meaningful municipal workflow coverage, but a live deployment that is currently unstable at the root route and not yet safe for city pilot commitments without remediation.
+CivicMetrix is organized as a single Next.js App Router codebase with tenant-aware database execution, API routes for operational workflows, a parallel worker runtime, and public-facing dashboards generated per organization slug.
 
-## Audit Scope
+At a functional level, the platform provides:
 
-This reassessment is based on direct review of:
+- Staff-facing dashboards for operations, grants, KPI performance, audit, work orders, assistance, data quality, reports, and system health
+- Citizen-facing issue reporting and citizen authentication surfaces
+- Public dashboards for KPIs, grants, departments, infrastructure, issues, programs, operations, performance, and transparency views
+- Upload-driven and connector-driven ingestion for structured civic datasets
+- Analytics and intelligence pipelines that derive risk, trend, anomaly, and cluster insights
+- Metrics and health endpoints for runtime monitoring and operational diagnostics
 
-- `src/app`
-- `src/components`
-- `src/lib`
-- `src/workers`
-- `prisma`
-- `scripts`
-- `middleware.ts`
-- deployment and runtime behavior observed on March 9, 2026
+The platform is strongly oriented toward local government operating workflows rather than generic BI alone. It is designed to combine governance, operations, public transparency, and machine-generated signals in one tenant-scoped system.
 
-## Repository Architecture Audit
+## Current Production Runtime
 
-### Platform Structure
+The current production environment consists of:
 
-The repository is organized as a monolithic Next.js App Router application with:
+- NGINX as the public-facing reverse proxy
+- PM2 as the process manager and restart controller
+- Next.js 16.1.6 as the web application runtime
+- Prisma Client and Prisma schema management for data access
+- PostgreSQL as the system of record
+- Redis and BullMQ for queued background work
 
-- staff dashboards under `src/app/dashboard`
-- citizen-facing flows under `src/app/citizen`
-- public transparency dashboards under `src/app/public/[slug]`
-- API routes under `src/app/api`
-- shared business logic in `src/lib`
-- BullMQ workers in `src/workers`
-- a large Prisma schema and migration history under `prisma`
+Production characteristics verified from the running environment:
 
-This is a real platform repository, not a UI shell. The codebase covers municipal operations, public transparency, ingestion, analytics, queue jobs, reporting, and RBAC.
+- PM2 process name: `civicmetrix`
+- PM2 status: `online`
+- Runtime memory observed during verification: approximately 55 MB
+- Local root endpoint health: `200 OK`
+- Local API health endpoint: `200 OK`
+- External production endpoints: returning `200 OK`
 
-### Subsystem Status Matrix
+PM2 persistence is enabled through the generated `pm2-root.service` systemd unit, and the active process list is saved through `pm2 save`. The process configuration includes:
 
-| Subsystem | Status | Assessment |
-| --- | --- | --- |
-| Multi-tenant architecture | Implemented, needs hardening | Tenant-scoped models exist across the schema, request headers propagate tenant id, AsyncLocalStorage tenant context exists, and `db()` enforces tenant context. Hardening is still needed because some legacy helpers remain simplistic and tenant safety depends on consistent context propagation. |
-| Prisma schema design | Implemented, needs hardening | The schema is broad and municipal-domain aware: organizations, departments, programs, grants, issues, assets, assistance, work orders, reports, RBAC, import sessions, data quality, data sources, and Google integration. The model breadth is strong; operational safety and query discipline still need tightening. |
-| Civic issue ingestion | Partially implemented | Public issue submission exists both as a server action flow and an API route. Issues persist and support geolocation. Ingestion is not yet part of the generalized upload/import worker path. |
-| Assistance ingestion | Partially implemented | `AssistanceRecord` exists, assistance summary APIs and dashboards exist, and the worker has an assistance handler. The broader upload/import path supports the dataset, but the subsystem still needs reconciliation, operator feedback, and wider dashboard integration. |
-| Infrastructure ingestion | Implemented, needs hardening | Infrastructure is the most complete ingestion path. Upload/import creates or resolves registry records and writes snapshots. This is the clearest end-to-end ingestion subsystem in the platform. |
-| Grants ingestion | Partially implemented | Grant models, dashboards, compliance views, and a grant worker handler exist. Upload/import persistence exists, but deeper grant normalization, program/department linking, and reporting maturity still need work. |
-| Dashboard analytics | Implemented, needs hardening | Staff dashboards span operations, executive views, grants, issues, budgets, assets, reports, and assistance. Analytics refresh workers exist, but runtime stability and consistency are not yet strong enough for production trust. |
-| Public transparency dashboards | Implemented, needs hardening | Public pages for KPI, grants, issues, operations, infrastructure, map, programs, council report, and assistance are real. Live production shows the public city dashboard works, but the main site root is failing, which undermines overall platform readiness. |
-| Map visualization | Implemented, needs hardening | Mapbox- and Leaflet-based surfaces exist for public and staff routes. Issue heatmaps and public map pages are implemented. The map system is feature-complete enough for demos, but needs resilience and validation work. |
-| Worker queue system | Implemented, needs hardening | BullMQ queues, repeatable jobs, dead-letter handling, queue metrics, and multiple workers are implemented. This is a real background processing layer. It still needs deployment discipline, worker supervision, and failure-recovery maturity. |
-| Tenant isolation | Implemented, needs hardening | Migration history shows tenant RLS work, composite tenant foreign keys, and request-scoped tenant context. This is materially ahead of a typical prototype. It still requires verification discipline because isolation correctness depends on consistent use of `db()` and tenant-aware transactions. |
-| Security middleware | Partially implemented | Middleware injects CSP, request ids, tenant headers, route protection, and global rate limiting. It is useful, but not sufficient as a full security boundary. |
-| Authentication | Implemented, needs hardening | NextAuth credential flows exist for staff and citizens, with bcrypt, org-aware login, role mapping, and session enrichment. Authentication is real, but operational controls such as secret management, password policies, and SSO are not government-grade. |
-| Rate limiting | Partially implemented | Global rate limiting exists in middleware and login throttling has a local fail-closed fallback. However, the PM2 environment currently uses placeholder Upstash values, and the global limiter is effectively bypassed if Upstash is unavailable. |
-| Audit logging | Partially implemented | Immutable audit log writes exist and issue creation records audit entries. The audit surface is not yet comprehensive across high-risk admin, ingest, and configuration actions. |
-| Deployment architecture | Partially implemented | The deployment uses Next.js, Prisma, PostgreSQL, PM2, NGINX, and a Linux VPS. It is simple and workable, but lacks release safety, rollback discipline, environment segregation, and runtime health guarantees. |
-| Observability | Partially implemented | Structured logging, request metrics, DB latency logging, queue metrics, health/readiness endpoints, and internal metrics are implemented. There is no end-to-end tracing, alert routing, dashboard packaging, or robust incident workflow. |
+- `autorestart: true`
+- `max_restarts: 10`
+- `restart_delay: 5000`
 
-## Detailed Subsystem Notes
+The standardized production deployment workflow is:
 
-### 1. Multi-Tenant Architecture
+```bash
+npm run deploy:prod
+```
 
-Strengths:
+That script executes:
 
-- `Organization` is the core tenant root in Prisma
-- most major domain tables carry `organizationId`
-- tenant context is propagated via request headers and AsyncLocalStorage
-- `db()` requires tenant context and wraps transactions with `set_config('app.current_tenant', ...)`
-- migration history shows explicit tenant RLS and composite tenant foreign key work
+```bash
+rm -rf .next && NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 npm run build && pm2 restart civicmetrix
+```
 
-Weaknesses:
+This is the current operational baseline for production deployment.
 
-- there are multiple tenant helpers (`tenantDb`, `tenant-db`, `tenantClient`, `systemClient`) which increase the chance of inconsistent usage
-- some legacy convenience wrappers are shallow compared to the newer tenant-aware DB proxy
-- the codebase still relies on discipline, not only database enforcement
+## Text Architecture Diagram
 
-Assessment: strong for pre-production, not yet fully hardened.
+The current platform can be described as the following logical architecture:
 
-### 2. Prisma Schema Design
+1. End users interact through browser clients
+   - Internal staff dashboards
+   - Citizen-facing pages
+   - Public transparency dashboards
 
-Strengths:
+2. Requests enter through NGINX
+   - TLS termination
+   - Reverse proxy to the Next.js application on port 3000
 
-- broad municipal schema with strong domain coverage
-- includes grants, budgets, KPI history, issues, infrastructure, assistance, work orders, reports, alerts, roles, API tokens, import sessions, data quality, data sources, and Google integration
-- large migration history suggests real iterative development, not a single scaffold pass
+3. PM2 supervises the application runtime
+   - Starts the Next.js production server
+   - Restarts on failure
+   - Persists process state across reboots
 
-Weaknesses:
+4. The Next.js application provides
+   - App Router page rendering
+   - API endpoints under `src/app/api`
+   - Tenant-aware internal dashboards
+   - Public transparency pages
+   - Authentication flows
 
-- the breadth of the schema is ahead of the operational maturity of some runtime paths
-- some broad domain areas have UI and schema support but weaker end-to-end workflows
-
-Assessment: one of the strongest assets in the platform.
-
-### 3. Ingestion Systems
-
-Implemented ingestion surfaces:
-
-- uploads
-- upload mapping
-- import planning
-- import sessions
-- upload templates
-- data source connectors
-- Google Sheets preview and sync
-
-What is real:
-
-- queue-backed import execution
-- dataset handlers for infrastructure, assistance, and grants
-- import session tracking and post-import dashboard refresh
-
-What still needs hardening:
-
-- row-level reconciliation and operator feedback
-- deterministic replays and resumability
-- stronger lineage and error surfacing
-- broader dataset normalization rules
-
-### 4. Dashboard Analytics
-
-The staff dashboard surface is substantial:
-
-- executive
-- command center
-- city operations
-- reports
-- grants
-- work orders
-- assets
-- issues
-- assistance
-- data browser
-- system health
-
-This is enough to demonstrate a municipal operations platform, but not enough to declare production readiness while the runtime remains unstable.
-
-### 5. Public Transparency Layer
-
-Verified current state:
-
-- `https://civicmetrix.com/` currently returns `500`
-- `https://civicmetrix.com/public/city-of-woodburn` renders successfully
-- `https://civicmetrix.com/public/city-of-woodburn/report-issue` renders successfully
-
-What the live public dashboard currently exposes:
-
-- public KPI summary
-- grant funding totals
-- issue map surface
-- civic risk engine messaging
-- infrastructure health chart area
-- council report link
-- public issue reporting flow
-
-Assessment: the public transparency platform is real and demo-capable, but the root-site failure means the live product experience is not stable enough for pilots.
-
-## Production Deployment Audit
-
-### Observed Production Stack
-
-- Next.js App Router
-- Prisma
-- PostgreSQL
-- PM2
-- NGINX
-- Linux VPS
-
-### Deployment Safety
-
-Status: **Partially implemented**
-
-Evidence:
-
-- deployment instructions exist
-- health and readiness checks exist
-- migration safety checker exists
-- PM2 and NGINX are in place
-
-Risks:
-
-- deploy flow is manual
-- no blue/green deployment
-- no containerized release isolation
-- repeated PM2 restarts have left duplicate stopped process entries
-- the current root route is broken in production
-
-### Build Stability
-
-Status: **Moderate**
-
-Evidence:
-
-- full production builds complete successfully
-- Prisma client generation is wired into build flow
-- route inventory is generated cleanly
-
-Risks:
-
-- the runtime can still fail after a successful build
-- the recent `manifests singleton` failure shows the build success signal is not sufficient
-
-### Runtime Stability
-
-Status: **Poor**
-
-Evidence:
-
-- `civicmetrix.com` root returns `500`
-- local production runtime reproduces `InvariantError: The manifests singleton was not initialized`
-- earlier logs also showed server action mismatch failures
-
-Assessment: this is the largest immediate blocker to pilot readiness.
-
-### Migration Safety
-
-Status: **Partially implemented, good direction**
-
-Evidence:
-
-- `scripts/check-migrations.ts` scans for risky SQL patterns
-- migration volume indicates disciplined schema evolution
-- explicit tenant and index hardening migrations exist
-
-Risks:
-
-- the checker only covers newer migrations after a date gate
-- no formal automated deployment pipeline is visible in-repo
-
-### Environment Configuration
-
-Status: **Needs hardening**
-
-Evidence:
-
-- environment validation requires database, auth, and Redis variables
-- PM2 env inspection showed placeholder Upstash REST credentials in use
-
-Risks:
-
-- global rate limiting can effectively disable itself
-- placeholder values in production-adjacent config are unacceptable for city pilot claims
-
-### Observability and Logging
-
-Status: **Partially implemented**
-
-Evidence:
-
-- structured JSON logger
-- DB latency logging
-- internal metrics API
-- Prometheus metrics endpoint
-- queue size reporting
-- health and readiness endpoints
-
-Risks:
-
-- no evidence of external log aggregation
-- no on-call alerting integration
-- no packaged operational dashboards
-- root-cause diagnosis still required manual shell access
-
-### Failure Recovery
-
-Status: **Weak**
-
-Evidence:
-
-- PM2 can restart processes
-- NGINX can be reloaded
-- queues have retries and dead-letter handling
-
-Risks:
-
-- no automated rollback
-- no release isolation
-- runtime manifest errors required manual intervention
-- root route remains broken after rebuilds
-
-## civicmetrix.com Product Audit
-
-### Public Demo Surface
-
-| Product Surface | Current State | Audit View |
-| --- | --- | --- |
-| Public dashboards | Live and rendering for Woodburn slug | Demo-capable |
-| Grant funding charts | Present on public dashboard | Good demo value, limited evidence of drilldown depth |
-| Issue heatmap | Present on public dashboard | Good visual story, needs reliability validation |
-| Infrastructure health dashboard | Present on public dashboard | Strong municipal signal, likely still demo-grade |
-| Civic risk engine | Present with active messaging | Early productization, not yet decision-grade |
-| Citizen issue reporting | Live report form available | Useful pilot workflow, needs moderation and SLA rigor |
-| Program dashboards | Public program routes exist | Functional surface, maturity varies by dataset depth |
-
-### Product Completeness for City Pilots
-
-Current conclusion: **not ready for formal city pilots today**
-
-Reasons:
-
-- the main production homepage is down
-- runtime stability is currently below pilot expectations
-- observability requires shell-level debugging
-- ingestion breadth is ahead of operational reliability
-- security and deployment posture are not yet strong enough for external municipal commitments
-
-What is true despite that:
-
-- the platform is credible as a serious pre-production municipal operations product
-- the public Woodburn demo is strong enough to support investor, partner, and design-partner conversations
-- the codebase has enough substance to justify a stabilization-first roadmap instead of a rewrite
-
-## Platform Maturity Score
-
-### Score
-
-**61 / 100**
-
-### Classification
-
-**Pre-Production**
-
-### Why Not Higher
-
-- live root-route failure
-- reproducible Next.js runtime instability
-- deployment process lacks safety rails
-- observability is incomplete
-- global rate limiting posture is not strong enough
-- generalized ingestion is still incomplete from an operator perspective
-
-### Why Not Lower
-
-- the schema is broad and real
-- multi-tenant patterns are substantive
-- worker architecture is real
-- public and staff surfaces are extensive
-- assistance, grants, issues, assets, reports, and connectors are more than prototypes
-
-## Recommended Priority Order
-
-1. Stabilize the production runtime and remove the root-route `500`.
-2. Harden deployment workflow, PM2 process discipline, and rollback safety.
-3. Fix environment and rate-limit posture, especially placeholder external-service config.
-4. Expand observability so runtime issues do not require direct shell debugging.
-5. Finish generalized ingestion reliability, reconciliation, and operator feedback.
-6. Only after stabilization, expand civic intelligence and cross-dataset automation.
+5. Prisma mediates data access to PostgreSQL
+   - Organization-scoped entities
+   - Cross-domain municipal data
+   - Reporting and analytics persistence
+
+6. Redis plus BullMQ provide worker queues
+   - Event processing
+   - Upload import processing
+   - Data source synchronization
+   - Civic intelligence jobs
+   - Reminder and scheduling jobs
+
+7. Worker services produce derived platform state
+   - Data quality metrics
+   - Infrastructure risks and trends
+   - KPI trend insights
+   - Issue anomaly and cluster insights
+   - Scheduled reports and reminders
+
+8. Public transparency pages expose selected tenant data
+   - Dashboard views
+   - Charts
+   - CSV and JSON open data endpoints
+   - Citizen issue submission
+
+## Core Modules
+
+### Application Surface
+
+The main application surface under `src/app` includes:
+
+- `api`
+- `auth`
+- `citizen`
+- `dashboard`
+- `public`
+- `demo`
+
+This structure reflects a product divided into internal staff operations, citizen engagement, and public transparency.
+
+### UI Component Domains
+
+The component library is grouped into operational areas:
+
+- `assistance`
+- `charts`
+- `dashboard`
+- `datasources`
+- `intelligence`
+- `layout`
+- `maps`
+- `public`
+- `ui`
+
+This is consistent with a product that has custom visualization, mapping, and operational dashboard requirements rather than a purely generic component set.
+
+### Core Platform Services
+
+The `src/lib` directory includes platform service layers for:
+
+- API handling and error normalization
+- Authentication and role authorization
+- Database and tenant scoping
+- Datasource connectors
+- Upload parsing, mapping, validation, and templates
+- Intelligence and insight generation
+- Metrics and observability
+- Notifications
+- Security and rate limiting
+- Reports and public data composition
+
+This service organization is one of the clearest indicators that CivicMetrix has already evolved beyond a simple dashboard application into a modular municipal platform.
+
+## API Surface
+
+The active API surface is organized into the following top-level groups:
+
+- `assistance`
+- `auth`
+- `citizen`
+- `city`
+- `datasources`
+- `documents`
+- `executive`
+- `google`
+- `health`
+- `intelligence`
+- `internal`
+- `kpi`
+- `metrics`
+- `public`
+- `quality`
+- `ready`
+- `reports`
+- `risk`
+- `system`
+- `uploads`
+- `work-orders`
+
+Operational capabilities exposed through these APIs include:
+
+- Authentication and organization registration
+- Public issue reporting
+- City operations summaries
+- Executive reporting
+- Datasource management and synchronization
+- Google Sheets integration
+- Upload planning, mapping, import orchestration, and import history
+- Data quality inspection
+- Infrastructure risk and trend inspection
+- Metrics export for observability
+- System and health checks
+- Work order creation and management
+
+This API design indicates that the platform is not only page-driven. It is structured as an operational service layer that can support future API consumers, automation, and integrations.
+
+## Database and Multi-Tenant Design
+
+The Prisma schema defines a broad municipal operating model centered on `Organization` as the tenant root. Nearly every major entity is organization-scoped.
+
+Core tenant-scoped domains include:
+
+- Departments
+- Programs
+- Budgets
+- Dashboards
+- KPIs and KPI history
+- Grants and milestones
+- Alerts
+- Documents
+- Roles and users
+- Citizens and citizen notifications
+- Issue reports and comments
+- Assets, maintenance schedules, and work orders
+- Insights, operational insights, and system metrics
+- Import sessions, dataset types, templates, and data quality metrics
+- Data sources and Google integrations
+- Assistance records
+- Infrastructure assets, snapshots, risks, and trends
+
+Tenant isolation is reinforced in the runtime through `tenantDb`, which sets `app.current_tenant` inside database transactions before executing tenant-scoped work. The schema and transaction design strongly suggest a shared-database multi-tenant architecture with application-managed tenant scoping and organization-based authorization.
+
+This model is sufficient for a production civic SaaS, but it will benefit from more explicit tenant governance documentation, automated tenant-level auditing, and stricter consistency around all data access paths.
+
+## Worker Systems
+
+The worker layer is substantial and production-relevant. Current worker files include:
+
+- `civic-intelligence-worker.ts`
+- `data-source-sync.ts`
+- `event-worker.ts`
+- `grant-deadline-worker.ts`
+- `grant-pipeline-refresh-worker.ts`
+- `grant-reminder-worker.ts`
+- `issue-sla-worker.ts`
+- `maintenance-scheduler-worker.ts`
+- `report-scheduler.ts`
+- `upload-import-worker.ts`
+- `work-order-generator.ts`
+
+Additional intelligence workers exist under `src/workers/intelligence`:
+
+- `grant-risk-worker.ts`
+- `issue-anomaly-worker.ts`
+- `kpi-trend-worker.ts`
+- `spatial-cluster-worker.ts`
+
+The queue layer defined in `src/lib/queue.ts` provisions:
+
+- `event-processing`
+- `grant-reminders`
+- `issue-sla`
+- `maintenance-scheduler`
+- `civic-intelligence`
+- `data-source-sync`
+- `dead-letter`
+
+Worker orchestration in `src/workers/index.ts` schedules repeatable jobs, instruments queue behavior, and records worker metrics. This means the worker system is not incidental; it is a first-class subsystem.
+
+## Data Ingestion Pipelines
+
+The platform contains two main ingestion patterns.
+
+### 1. Upload-driven ingestion
+
+The upload ingestion pipeline consists of:
+
+- File upload intake: `src/app/api/uploads/route.ts`
+- Upload planning: `src/app/api/uploads/plan/route.ts`
+- Auto-mapping: `src/lib/uploads/autoMapColumns.ts`
+- Parsing: `src/lib/uploads/parser.ts`
+- Row normalization: `src/lib/uploads/normalizeRows.ts`
+- Validation: `src/lib/uploads/validateRows.ts` and `validateUpload.ts`
+- Mapping templates: `src/lib/uploads/templates.ts`
+- Import session persistence: `ImportSession` model
+- Queue handoff: `eventProcessingQueue.add("upload-import", ...)`
+- Worker persistence by dataset type: `src/workers/handlers/*`
+
+The upload subsystem already supports:
+
+- Template suggestion
+- Field-to-column mapping
+- Import session status tracking
+- Validation and partial failure handling
+- Data quality metric generation
+
+### 2. External connector-driven ingestion
+
+The external connector path consists of:
+
+- Datasource registration: `src/app/api/datasources/connect/route.ts`
+- Datasource listing and deletion: `src/app/api/datasources/*`
+- Sync trigger API: `src/app/api/datasources/[id]/sync/route.ts`
+- Source connectors:
+  - Google Sheets
+  - Microsoft Excel
+- Data hashing for change detection: `src/lib/datasources/hashRows.ts`
+- Row normalization and validation reuse from upload pipeline
+- Import session creation and upload-import queue handoff from `data-source-sync.ts`
+
+This is a strong design choice: external connectors feed into the same validation and import abstractions as manual uploads, reducing architectural duplication.
+
+## Civic Intelligence Engine
+
+The civic intelligence layer is one of the platform's differentiators.
+
+It currently includes:
+
+- Infrastructure risk analysis
+- Infrastructure trend analysis
+- Grant risk detection
+- KPI trend anomaly detection
+- Issue anomaly detection
+- Spatial clustering and service cluster insight generation
+- Operational insight persistence
+- Dashboard refresh triggers after imports
+- System metric recording for worker runtime and failures
+
+Primary implementation components:
+
+- `src/workers/civic-intelligence-worker.ts`
+- `src/workers/intelligence/grant-risk-worker.ts`
+- `src/workers/intelligence/kpi-trend-worker.ts`
+- `src/workers/intelligence/issue-anomaly-worker.ts`
+- `src/workers/intelligence/spatial-cluster-worker.ts`
+- `src/lib/intelligence/analyzeInfrastructureRisk.ts`
+- `src/lib/intelligence/analyzeInfrastructureTrends.ts`
+- `src/lib/insights/create-insight.ts`
+- `src/lib/civic-insights.ts`
+- `src/lib/city-health.ts`
+- `src/lib/kpi-trends.ts`
+- `src/lib/issue-hotspots.ts`
+
+The intelligence layer currently produces both machine-readable data and user-facing narrative or alert surfaces. That is the correct direction for a municipal operating platform, because civic users need decision support, not only raw analytics.
+
+## Dashboard Systems
+
+The internal dashboard environment is broad and functionally segmented. Current dashboard modules include:
+
+- Alerts
+- Assets
+- Assistance
+- Audit
+- Browser
+- Budgets
+- City operations
+- Command center
+- Data
+- Data browser
+- Datasources
+- Departments
+- Documents
+- Executive
+- Goals
+- Grant compliance
+- Grants
+- Insights
+- Issues
+- KPI
+- Map
+- Operations
+- Organization
+- Programs
+- Reports
+- System health
+- Work orders
+
+These dashboards indicate that CivicMetrix is already positioned as a unified municipal control plane rather than a single-purpose analytics portal.
+
+## Public Transparency System
+
+The public transparency system under `src/app/public/[slug]` is extensive. It includes:
+
+- Main public dashboard
+- Assistance
+- Budget
+- Council report
+- Departments and department detail
+- Goals
+- Grants
+- Infrastructure
+- Issues
+- KPI and KPIs
+- Map
+- Operations
+- Performance
+- Programs and program detail
+- Report issue
+- Transparency
+
+Open-data style exports are already present:
+
+- Grants CSV
+- Grants JSON
+- Issues CSV
+- Issues JSON
+- KPIs CSV
+- KPIs JSON
+
+Citizen issue reporting is supported through:
+
+- Public route: `src/app/public/[slug]/report-issue`
+- API endpoint: `src/app/api/public/report-issue/route.ts`
+
+This means CivicMetrix already supports one of the strongest value propositions for local governments: a shared internal and public operating picture sourced from the same underlying tenant data.
+
+## Observability and Health Monitoring
+
+The platform includes multiple layers of observability:
+
+- `/api/health`
+- `/api/system/health`
+- `/api/metrics`
+- `/api/internal/metrics`
+- PM2 process supervision
+- PM2 startup persistence
+- Queue metrics instrumentation
+- API request and error observability
+- Worker runtime and failure metrics
+- System metric persistence to the database
+
+Relevant implementation areas include:
+
+- `src/lib/observability/*`
+- `src/lib/metrics/*`
+- `src/lib/system-metrics.ts`
+- `src/app/dashboard/system/health/page.tsx`
+
+This is sufficient for internal operational visibility, but not yet a complete enterprise observability posture. There is room for stronger alert routing, retention policy documentation, SLO definitions, and incident response instrumentation.
+
+## Current Limitations
+
+The current platform is credible and broad, but several limitations remain.
+
+### Product and feature limitations
+
+- No first-class billing or subscription management layer
+- No procurement or vendor management domain
+- No dedicated policy/configuration admin center for tenant administrators
+- No feature-flag or release ring system
+- No explicit workflow engine for approval chains
+- No formal external integration marketplace beyond current connectors
+
+### Technical and operational limitations
+
+- Shared codebase complexity is growing quickly
+- Worker and queue behavior need stronger operational documentation
+- Historical PM2 logs still contain stale error lines that can confuse operational reviews
+- Tenant access discipline exists, but a full tenant safety audit should continue
+- There is no dedicated infrastructure-as-code repository in the application tree
+- Release governance depends on scripts and PM2 rather than a broader staged deployment framework
+
+### Documentation limitations before this rebuild
+
+- Existing documents no longer matched the live architecture
+- Production hardening and deployment workflow were under-documented
+- Platform scope had outgrown prior narrative materials
+
+## Recommended Roadmap
+
+The next roadmap should assume the platform is already viable and should focus on safety, depth, and enterprise readiness.
+
+### Near-term priorities
+
+- Formalize release governance and rollback procedures
+- Extend deployment safety checks and post-deploy verification
+- Add stronger tenant admin and settings workflows
+- Expand system-health visibility and alerting
+- Improve operational playbooks for workers and imports
+
+### Product expansion priorities
+
+- Deepen work-order lifecycle orchestration
+- Expand assistance and program impact analytics
+- Introduce capital planning and asset renewal forecasting
+- Add more connector types beyond current spreadsheet-centric sources
+- Improve scheduled reporting and executive narrative outputs
+
+### Enterprise-readiness priorities
+
+- Stronger audit export and compliance workflows
+- SSO and enterprise identity integration options
+- Granular admin governance controls
+- Better configuration and secrets management documentation
+- Formal incident response, backup, and disaster recovery procedures
 
 ## Final Assessment
 
-CivicMetrix is a substantial civic data platform in pre-production, not a concept prototype. Its strongest assets are the multi-tenant domain model, queue-backed processing, and breadth of municipal workflows. Its weakest area is operational reliability. The correct near-term strategy is not feature expansion first. It is platform stabilization, deployment hardening, and data-ingestion reliability work until the live environment is trustworthy enough for municipal pilots.
+CivicMetrix is currently a real municipal operating platform with meaningful production architecture, not a lightweight demo system. Its strongest differentiators are:
+
+- tenant-scoped internal and public data surfaces
+- integrated ingestion and normalization pipelines
+- a worker-backed civic intelligence engine
+- broad municipal workflow coverage across grants, KPIs, issues, assets, and work orders
+
+The platform's next stage is not conceptual validation. It is operational hardening, product depth, enterprise controls, and disciplined roadmap execution.

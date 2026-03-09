@@ -1,207 +1,272 @@
 # CivicMetrix Platform Roadmap 2026
 
-Date: March 9, 2026 (UTC)
+## Roadmap Intent
 
-## Strategic Starting Point
+This roadmap is based on the current live CivicMetrix production platform, not on legacy planning assumptions. The running system already includes:
 
-This roadmap replaces earlier documents that assumed the platform was closer to pilot readiness than current evidence supports.
+- a stable PM2-managed production runtime
+- a Webpack-based Next.js production build process
+- tenant-scoped application and database behavior
+- public transparency dashboards
+- ingestion pipelines for uploads and external connectors
+- background workers for civic intelligence, reporting, reminders, SLA monitoring, and synchronization
 
-Current verified position:
+The objective of the 2026 roadmap is to convert CivicMetrix from a technically broad platform into a durable, auditable, enterprise-grade civic operations service.
 
-- maturity score: **61 / 100**
-- classification: **Pre-Production**
-- public Woodburn demo works
-- live root site is currently broken with `500 Internal Server Error`
-- generalized ingestion exists, but runtime and deployment stability are the immediate blockers
+## Strategic Priorities
 
-The roadmap therefore shifts from feature expansion first to stabilization first.
+The platform should pursue six strategic priorities in order:
 
-## 2026 Roadmap Summary
+1. Production safety and release governance
+2. Tenant administration and organizational controls
+3. Operational workflow depth
+4. Data ingestion maturity and connector expansion
+5. Civic intelligence productization
+6. Enterprise readiness for government and institutional buyers
 
-### Phase 1 - Platform Stabilization
+## Current Baseline
 
-Objective: make the current platform reliable enough to support internal operations, partner demos, and controlled design-partner use without recurring production breakage.
+The current production baseline includes:
 
-Priority outcomes:
+- NGINX reverse proxy
+- PM2 process supervision with startup persistence
+- Next.js 16.1.6 production runtime
+- Prisma ORM
+- PostgreSQL primary data store
+- Redis plus BullMQ queues
+- standardized deployment through `npm run deploy:prod`
 
-- eliminate the current Next.js runtime failure on `/`
-- make production deploys repeatable and safe
-- establish reliable runtime diagnostics
-- close environment and rate-limit configuration gaps
-- clean up PM2 process lifecycle and recovery behavior
+The platform already supports:
 
-Core workstreams:
+- internal dashboards for grants, KPIs, alerts, audit, data, reports, insights, operations, system health, work orders, and more
+- public transparency dashboards under organization slugs
+- citizen issue reporting
+- upload and connector ingestion
+- data quality metrics
+- infrastructure risk and trend analysis
+- grant risk detection
+- KPI trend monitoring
+- issue anomaly and spatial clustering insights
 
-1. Runtime stability
-   - resolve the `Invariant: The manifests singleton was not initialized` failure
-   - remove server action / manifest mismatch behavior from release flow
-   - add release verification against `/`, `/api/health`, `/api/ready`, and a public dashboard slug
+This is a strong baseline. The roadmap therefore emphasizes controlled scale rather than feature speculation.
 
-2. Deployment safety
-   - standardize a single PM2 process name and process lifecycle
-   - add pre-start cleanup and post-build validation
-   - document rollback procedure and test it
-   - prevent mixed-build asset/runtime states
+## Phase 1: Platform Safety and Release Governance
 
-3. Environment hardening
-   - replace placeholder Upstash configuration in deployed environments
-   - verify production secrets, OAuth values, and queue configuration
-   - separate development, staging, and production expectations
+### Objective
 
-4. Observability
-   - add a stable incident-debug workflow
-   - expose actionable dashboarding for API errors, DB latency, queue lag, and worker failures
-   - add alert thresholds for repeated 5xx errors and dead-letter growth
+Reduce the probability that routine development work breaks production behavior, deployment flow, or runtime consistency.
 
-5. Security and reliability hardening
-   - ensure all public and API-facing rate limits fail closed where appropriate
-   - expand audit logging coverage for admin, ingest, datasource, and reporting actions
-   - review public metrics exposure and internal metrics access boundaries
+### Workstreams
 
-Exit criteria:
+- Formalize deployment checklists around `npm run deploy:prod`
+- Add post-deploy verification scripts for root route, health, public dashboard, and key APIs
+- Add environment validation coverage to startup and worker entrypoints
+- Document rollback commands and expected PM2 behavior
+- Add artifact consistency checks for Next.js build output
+- Add runtime smoke tests to CI before merge or release
 
-- `civicmetrix.com/` returns 200 consistently
-- no manifest mismatch/runtime singleton errors after clean deploy
-- deploy checks cover homepage, public dashboard, health, ready, and metrics paths
-- worker, Redis, and DB health are visible without shell access
+### Target outcomes
 
-### Phase 2 - Universal Data Ingestion Engine
+- deterministic build and deploy path
+- repeatable rollback workflow
+- lower operational ambiguity during incidents
+- cleaner production support handoff between engineers
 
-Objective: convert the current import and connector framework into a dependable municipal ingestion product.
+## Phase 2: Tenant Administration and Governance
 
-Current baseline already in place:
+### Objective
 
-- upload parsing for CSV/XLSX/ODS
-- preview, column mapping, planning, and import APIs
-- `ImportSession`
-- template persistence
-- `DataSource` connectors
-- Google Sheets integration
-- worker-backed ingestion
+Strengthen CivicMetrix as a long-term multi-tenant government platform by improving administration and tenant lifecycle control.
 
-2026 expansion goals:
+### Workstreams
 
-1. Complete dataset coverage
-   - harden infrastructure ingestion
-   - normalize grants ingestion
-   - normalize assistance ingestion
-   - bring civic issue dataset ingestion into the same ingestion framework where appropriate
+- tenant administration dashboard for organization settings
+- role and permission management depth beyond current RBAC baseline
+- organization provisioning audit trails
+- tenant-level data retention and archival policies
+- tenant configuration diagnostics and validation
+- configurable notification routing
 
-2. Operator-grade import UX
-   - row-level failure reporting
-   - import reconciliation summaries
-   - deterministic re-run and replay support
-   - mapping confidence and validation feedback
+### Target outcomes
 
-3. Connector maturity
-   - improve Microsoft Excel parity with Google Sheets
-   - add sync history and failure diagnostics
-   - show last successful sync, change detection, and stale-source warnings
+- safer tenant onboarding
+- clearer ownership boundaries
+- lower risk of cross-tenant operational mistakes
+- stronger platform credibility for enterprise and government audits
 
-4. Data quality controls
-   - stronger dataset quality scoring
-   - duplicate detection
-   - schema drift alerts
-   - import policy enforcement by dataset type
+## Phase 3: Operations Workflow Expansion
 
-Exit criteria:
+### Objective
 
-- infrastructure, grants, and assistance imports are consistently end-to-end
-- datasource syncs are observable and replayable
-- staff can diagnose failed imports without shell or DB access
+Turn existing operational modules into deeper end-to-end workflow systems.
 
-### Phase 3 - Civic Intelligence Engine
+### Workstreams
 
-Objective: turn the current analytics workers into decision-support systems that materially help city staff prioritize work.
+- work order lifecycle expansion
+- issue escalation and service-level workflow tooling
+- maintenance planning improvements
+- tighter issue-to-work-order-to-asset linkage
+- richer departmental workload and response analytics
+- operational queue and staffing visibility
 
-Current baseline already in place:
+### Target outcomes
 
-- infrastructure risk analysis
-- infrastructure trends
-- KPI trend worker
-- issue anomaly worker
-- spatial cluster worker
-- grant risk worker
-- dashboard refresh worker
+- CivicMetrix becomes a system of action, not only a system of record and dashboards
+- stronger retention value for public works and city operations teams
+- more measurable operational ROI for customers
 
-2026 expansion goals:
+## Phase 4: Data Ingestion and Connector Maturity
 
-1. Productize intelligence outputs
-   - surface worker outputs directly in dashboards and reports
-   - tie insights to operational actions, not just passive displays
+### Objective
 
-2. Cross-dataset reasoning
-   - combine issues, assets, grants, and assistance geography
-   - detect recurring civic hotspots, underperforming programs, and infrastructure-risk clusters
+Make data onboarding easier, safer, and more comprehensive across customer environments.
 
-3. Narrative and executive intelligence
-   - improve council reports and executive briefings
-   - generate readable summaries tied to actual municipal metrics
+### Workstreams
 
-4. Trust and explainability
-   - provide evidence trails for recommendations
-   - show source dataset lineage for major insights
-   - avoid black-box decision outputs
+- additional external connectors beyond Google Sheets and Microsoft Excel
+- connector validation and schema drift handling
+- better import lineage and source traceability
+- improved import observability and replay tooling
+- dataset-type governance and import policy controls
+- bulk reconciliation and conflict resolution workflows
+- stronger GIS ingestion workflows and map-layer publishing
 
-Exit criteria:
+### Target outcomes
 
-- intelligence outputs are visible, attributable, and actionable
-- reports and dashboards can explain why a recommendation was produced
-- civic intelligence meaningfully improves prioritization workflows
+- lower onboarding effort
+- fewer manual spreadsheet processes
+- faster time to usable dashboards
+- better reliability of downstream intelligence outputs
 
-### Phase 4 - Government Deployment Hardening
+## Phase 5: Civic Intelligence Productization
 
-Objective: move from pre-production software to a platform that can survive formal pilot security review and operational scrutiny.
+### Objective
 
-Core workstreams:
+Promote the intelligence layer from a useful internal subsystem to a flagship product capability.
 
-1. Environment and release governance
-   - staged environments
-   - migration discipline
-   - explicit rollback pathways
-   - controlled release promotion
+### Workstreams
 
-2. Security posture
-   - expanded audit coverage
-   - stronger secrets handling and rotation guidance
-   - hardened public API exposure
-   - clearer tenant-boundary verification for all critical flows
+- insight triage and resolution workflows
+- confidence scoring and model transparency for generated insights
+- explainability views for grant risk, KPI trend, and service cluster alerts
+- historical intelligence timeline and audit trail
+- alert subscriptions and executive brief distribution
+- infrastructure renewal forecasting and capital planning logic
+- narrative brief generation by department or operating area
 
-3. Reliability posture
-   - restart and failure-recovery runbooks
-   - queue back-pressure handling
-   - dead-letter operational procedures
-   - verified backup and restore workflow
+### Target outcomes
 
-4. Government pilot readiness package
-   - architecture diagrams
-   - operational runbooks
-   - data-handling documentation
-   - pilot support and incident-response playbooks
+- stronger executive and investor differentiation
+- higher perceived platform intelligence
+- better decision support for city managers, finance, grants, and operations teams
 
-Exit criteria:
+## Phase 6: Public Transparency Expansion
 
-- deployment process is safe and repeatable
-- failure recovery is documented and tested
-- audit, observability, and tenant isolation posture are credible in external review
+### Objective
 
-## Roadmap Prioritization
+Expand CivicMetrix's public transparency layer into a stronger civic engagement and accountability product.
 
-Recommended execution order:
+### Workstreams
 
-1. Phase 1 - Platform Stabilization
-2. Phase 2 - Universal Data Ingestion Engine
-3. Phase 3 - Civic Intelligence Engine
-4. Phase 4 - Government Deployment Hardening
+- public dashboard theming and communication controls by organization
+- stronger public data catalog and export governance
+- citizen follow-up workflow after issue submission
+- ward, district, and service zone overlays in more public views
+- public performance narratives and trend summaries
+- accessibility and multilingual support strategy
 
-This order matters. CivicMetrix already has enough product breadth for serious municipal software conversations. The platform does not need more surface area before it needs stability.
+### Target outcomes
 
-## 2026 Decision Rule
+- stronger citizen engagement
+- better public trust posture
+- greater value for council, city manager, and communications stakeholders
 
-Use this rule for all roadmap decisions:
+## Phase 7: Enterprise Readiness
 
-> If a feature expands product breadth but does not improve stability, ingest reliability, or operator trust, it is lower priority than Phase 1 and Phase 2 work.
+### Objective
 
-## Closing View
+Prepare the platform for larger institutional customers and longer procurement cycles.
 
-The platform has enough substance to justify continued investment. It does not yet have enough operational stability to justify city pilot promises. The 2026 roadmap should therefore be judged first by whether CivicMetrix becomes reliable, diagnosable, and safely deployable, and only second by how many new product modules are added.
+### Workstreams
+
+- SSO and enterprise identity provider integration
+- formal backup and disaster recovery procedures
+- compliance evidence export and audit packages
+- system usage analytics by tenant and module
+- contract-grade operational reporting
+- environment promotion workflow for staging to production
+- infrastructure and platform security review
+
+### Target outcomes
+
+- improved fit for government procurement
+- stronger technical audit posture
+- lower enterprise sales friction
+
+## Platform Capability Map
+
+### Established today
+
+- public dashboards
+- internal operational dashboards
+- ingestion and import sessions
+- data quality metrics
+- grants and KPI monitoring
+- issue and work order management
+- background workers
+- basic observability and health monitoring
+
+### Maturing next
+
+- deployment governance
+- tenant administration
+- workflow depth
+- connector breadth
+- insight explainability
+- compliance posture
+
+### Longer-term expansion
+
+- enterprise identity
+- procurement readiness
+- advanced capital planning
+- broader citizen engagement tooling
+
+## Recommended Delivery Model
+
+The platform should avoid uncontrolled parallel expansion. A disciplined delivery model is recommended:
+
+1. Preserve the stable production baseline and deploy path
+2. Ship changes in bounded infrastructure and product workstreams
+3. Add verification scripts for each new operational subsystem
+4. Treat workers and ingestion as first-class release domains
+5. Maintain documentation and architecture notes with each roadmap increment
+
+## Success Metrics
+
+Roadmap progress should be measured through:
+
+- deployment success rate
+- rollback frequency
+- production incident count
+- ingestion completion rate
+- import validation failure rate
+- queue backlog and worker health
+- number of tenant modules actively adopted
+- public dashboard usage
+- issue response and work-order turnaround metrics
+
+## Recommended Sequence
+
+Recommended sequencing for the next twelve months:
+
+1. Release governance and deployment safety
+2. Tenant administration and organizational controls
+3. Operational workflow depth
+4. Connector expansion and import observability
+5. Intelligence explainability and reporting
+6. Enterprise identity and audit readiness
+
+## Final Roadmap Position
+
+The current CivicMetrix platform already contains the right domains for a defensible civic operations product. The 2026 roadmap should therefore focus on turning architectural breadth into operational durability, product depth, and enterprise-grade confidence.
