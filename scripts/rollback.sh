@@ -1,9 +1,20 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-echo "[rollback] started at ${timestamp}"
+echo "Rolling back CivicMetrix to previous build..."
 
-pm2 reload ecosystem.config.js --update-env
+pm2 stop civicmetrix || true
 
-echo "[rollback] completed at $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+rm -rf .next
+
+git checkout HEAD~1
+
+npm install
+
+NODE_ENV=production npm run build
+
+pm2 start ecosystem.config.js
+
+pm2 save
+
+echo "Rollback complete."
