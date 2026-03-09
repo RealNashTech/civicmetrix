@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { IssueStatus, WorkOrderPriority, WorkOrderStatus } from "@prisma/client";
+import { IssueStatus } from "@prisma/client";
 import { z } from "zod";
 
 import { createAuditLog } from "@/lib/audit";
@@ -75,16 +75,16 @@ async function updateIssueStatus(id: string, status: IssueStatus, action: string
   revalidatePath("/dashboard/executive");
 }
 
-function mapIssuePriorityToWorkOrderPriority(priority: string | null): WorkOrderPriority | null {
+function mapIssuePriorityToWorkOrderPriority(priority: string | null): string {
   if (!priority) {
-    return null;
+    return "NORMAL";
   }
 
-  if (Object.values(WorkOrderPriority).includes(priority as WorkOrderPriority)) {
-    return priority as WorkOrderPriority;
+  if (["LOW", "MEDIUM", "HIGH", "URGENT"].includes(priority)) {
+    return priority;
   }
 
-  return null;
+  return "NORMAL";
 }
 
 export async function markInProgress(formData: FormData) {
@@ -126,7 +126,7 @@ export async function createWorkOrderFromIssue(formData: FormData) {
       organizationId: user.organizationId,
       issueId: issue.id,
       status: {
-        in: [WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.BLOCKED],
+        in: ["OPEN", "IN_PROGRESS"],
       },
     },
     select: { id: true },
@@ -144,9 +144,9 @@ export async function createWorkOrderFromIssue(formData: FormData) {
       departmentId: issue.departmentId,
       title: `Work Order: ${issue.title}`,
       description: issue.description ?? null,
-      status: WorkOrderStatus.OPEN,
+      status: "OPEN",
       priority: mapIssuePriorityToWorkOrderPriority(issue.priority),
-      scheduledDate: new Date(),
+      startedAt: new Date(),
     },
   });
 

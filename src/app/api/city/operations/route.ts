@@ -208,8 +208,8 @@ async function handleGet(request: Request) {
 
     const totalAllocated = budgets.reduce((sum, budget) => sum + Number(budget.allocated), 0);
     const totalSpent = budgets.reduce((sum, budget) => sum + Number(budget.spent), 0);
-    const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETED").length;
-    const completedWorkOrders = workOrders.filter((order) => order.status === "COMPLETED").length;
+    const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETE").length;
+    const completedWorkOrders = workOrders.filter((order) => order.status === "COMPLETE").length;
     const completedMilestones = grantMilestones.filter((milestone) => milestone.completed).length;
     const overdueMilestones = grantMilestones.filter(
       (milestone) => !milestone.completed && milestone.dueDate < new Date(),
@@ -264,7 +264,7 @@ async function handleGet(request: Request) {
         title: order.title,
         status: order.status,
         priority: order.priority,
-        scheduledDate: order.scheduledDate,
+        startedAt: order.startedAt,
         completedAt: order.completedAt,
         asset: order.asset,
         department: order.department,

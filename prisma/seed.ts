@@ -73,6 +73,34 @@ const ASSET_NAMES = [
   "Water Main Segment",
 ] as const;
 
+const DATASET_TYPES = [
+  {
+    name: "InfrastructureAsset",
+    description: "Infrastructure asset inventory and condition snapshots",
+    targetTable: "InfrastructureAsset",
+  },
+  {
+    name: "Grant",
+    description: "Municipal grant tracking and compliance records",
+    targetTable: "Grant",
+  },
+  {
+    name: "CivicIssue",
+    description: "Citizen-reported and staff-managed civic issue records",
+    targetTable: "IssueReport",
+  },
+  {
+    name: "Permit",
+    description: "Permitting intake and permit lifecycle records",
+    targetTable: "Permit",
+  },
+  {
+    name: "Inspection",
+    description: "Inspection workflows and inspection result records",
+    targetTable: "Inspection",
+  },
+] as const;
+
 function jitter(base: number, spread: number) {
   return Number((base + (Math.random() - 0.5) * spread).toFixed(6));
 }
@@ -139,6 +167,36 @@ async function main() {
     await tx.asset.deleteMany({
       where: { organizationId: org.id },
     });
+
+    for (const datasetType of DATASET_TYPES) {
+      const existingType = await tx.datasetType.findFirst({
+        where: {
+          organizationId: org.id,
+          name: datasetType.name,
+        },
+        select: { id: true },
+      });
+
+      if (existingType) {
+        await tx.datasetType.update({
+          where: { id: existingType.id },
+          data: {
+            description: datasetType.description,
+            targetTable: datasetType.targetTable,
+          },
+        });
+        continue;
+      }
+
+      await tx.datasetType.create({
+        data: {
+          organizationId: org.id,
+          name: datasetType.name,
+          description: datasetType.description,
+          targetTable: datasetType.targetTable,
+        },
+      });
+    }
 
     const issueRows = Array.from({ length: 25 }).map((_, index) => {
       const template = ISSUE_TEMPLATES[index % ISSUE_TEMPLATES.length];

@@ -25,9 +25,22 @@ export async function notifyOrganizationEditors(
   const recipients = await client.user.findMany({
     where: {
       organizationId,
-      role: {
-        in: ["ADMIN", "EDITOR"],
-      },
+      OR: [
+        {
+          role: {
+            is: {
+              name: {
+                in: ["SYSTEM_ADMIN", "CITY_ADMIN", "DEPARTMENT_ADMIN"],
+              },
+            },
+          },
+        },
+        {
+          legacyRole: {
+            in: ["ADMIN", "EDITOR"],
+          },
+        },
+      ],
     },
     select: { id: true },
   });

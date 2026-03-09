@@ -1,68 +1,46 @@
-import { AppRole } from "@/types/roles";
-import { db } from "@/lib/db";
+import { hasAnyRole, RBAC_ROLES, RolePrincipal } from "@/lib/role-checks";
 
-export const ROLE_WEIGHT: Record<AppRole, number> = {
-  VIEWER: 1,
-  EDITOR: 2,
-  ADMIN: 3,
-};
+export {
+  canAccessGrants,
+  hasAnyRole,
+  hasMinimumRole,
+  hasRole,
+  mapLegacyRoleToRbac,
+  RBAC_ROLES,
+  resolveUserRole,
+} from "@/lib/role-checks";
 
-export function hasMinimumRole(role: AppRole, minimum: AppRole): boolean {
-  return ROLE_WEIGHT[role] >= ROLE_WEIGHT[minimum];
+export class RoleAccessError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
-export function canAccessGrants(role: AppRole): boolean {
-  return hasMinimumRole(role, "EDITOR");
+async function resolveRoleUser(providedUser?: RolePrincipal) {
+  if (providedUser) {
+    return providedUser;
+  }
+  const { auth } = await import("@/lib/auth");
+  const session = await auth();
+  return session?.user;
 }
 
-export async function hasDepartmentAccess(
-  userId: string,
-  departmentId: string,
-): Promise<boolean> {
-  const user = await db().user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      role: true,
-      organizationId: true,
-    },
-  });
+export async function requireRole(roleName: string, user?: RolePrincipal) {
+  return requireAnyRole([roleName], user);
+}
 
-  if (!user) {
-    return false;
+export async function requireAnyRole(roleNames: readonly string[], user?: RolePrincipal) {
+  const roleUser = await resolveRoleUser(user);
+  if (!roleUser) {
+    throw new RoleAccessError(401, "Unauthorized");
   }
 
-  if (user.role === "ADMIN") {
-    return true;
+  if (!hasAnyRole(roleUser, roleNames)) {
+    throw new RoleAccessError(403, "Forbidden");
   }
 
-  const department = await db().department.findFirst({
-    where: {
-      id: departmentId,
-      organizationId: user.organizationId,
-    },
-    select: { id: true },
-  });
-
-  if (!department) {
-    return false;
-  }
-
-  const permissionCount = await db().departmentPermission.count({
-    where: { userId: user.id },
-  });
-
-  if (permissionCount === 0 && user.role === "EDITOR") {
-    return true;
-  }
-
-  const permission = await db().departmentPermission.findFirst({
-    where: {
-      userId: user.id,
-      departmentId: department.id,
-    },
-    select: { id: true },
-  });
-
-  return Boolean(permission);
+  return roleUser;
 }

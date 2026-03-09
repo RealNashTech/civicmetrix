@@ -8,35 +8,48 @@ datasource db {
 }
 
 model Organization {
-  id                   String                @id @default(cuid())
-  name                 String
-  slug                 String                @unique
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  alerts               Alert[]
-  apiTokens            ApiToken[]
-  assets               Asset[]
-  budgets              Budget[]
-  citizens             Citizen[]
-  councilReports       CouncilReport[]
-  dashboards           Dashboard[]
-  departments          Department[]
-  districts            District[]
-  documents            Document[]
-  events               Event[]
-  grants               Grant[]
-  infrastructureLayers InfrastructureLayer[]
-  insights             Insight[]
-  issueReports         IssueReport[]
-  kpis                 KPI[]
-  maintenanceSchedules MaintenanceSchedule[]
-  programs             Program[]
-  slaPolicies          SLAPolicy[]
-  serviceZones         ServiceZone[]
-  strategicGoals       StrategicGoal[]
-  users                User[]
-  wards                Ward[]
-  workOrders           WorkOrder[]
+  id                     String                  @id @default(cuid())
+  name                   String
+  slug                   String                  @unique
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  alerts                 Alert[]
+  apiTokens              ApiToken[]
+  assets                 Asset[]
+  budgets                Budget[]
+  citizens               Citizen[]
+  councilReports         CouncilReport[]
+  dashboards             Dashboard[]
+  departments            Department[]
+  districts              District[]
+  documents              Document[]
+  events                 Event[]
+  grants                 Grant[]
+  infrastructureLayers   InfrastructureLayer[]
+  insights               Insight[]
+  issueReports           IssueReport[]
+  kpis                   KPI[]
+  maintenanceSchedules   MaintenanceSchedule[]
+  programs               Program[]
+  slaPolicies            SLAPolicy[]
+  serviceZones           ServiceZone[]
+  scheduledReports       ScheduledReport[]
+  systemMetrics          SystemMetric[]
+  strategicGoals         StrategicGoal[]
+  operationalInsights    OperationalInsight[]
+  roles                  Role[]
+  users                  User[]
+  importSessions         ImportSession[]
+  dataQualityMetrics     DataQualityMetric[]
+  infrastructureRisks    InfrastructureRisk[]
+  infrastructureTrends   InfrastructureTrend[]
+  datasetTypes           DatasetType[]
+  uploadMappingTemplates UploadMappingTemplate[]
+  wards                  Ward[]
+  workOrders             WorkOrder[]
+  dataSources            DataSource[]
+  assistanceRecords      AssistanceRecord[]
+  googleIntegration      GoogleIntegration?
 }
 
 model Department {
@@ -109,7 +122,9 @@ model User {
   name                  String
   email                 String
   passwordHash          String
-  role                  Role                   @default(VIEWER)
+  legacyRole            LegacyStaffRole        @default(VIEWER) @map("role")
+  roleId                String?
+  role                  Role?                  @relation(fields: [roleId], references: [id], onDelete: SetNull)
   organizationId        String
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
@@ -119,6 +134,22 @@ model User {
 
   @@unique([email, organizationId])
   @@index([organizationId])
+  @@index([roleId])
+}
+
+model Role {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  users          User[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("RbacRole")
 }
 
 model Dashboard {
@@ -343,6 +374,121 @@ model Document {
   @@index([entityType, entityId])
 }
 
+model UploadMappingTemplate {
+  id             String       @id @default(cuid())
+  organizationId String
+  templateName   String
+  entityType     String
+  datasetType    String
+  mappingJSON    Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType])
+  @@index([organizationId, datasetType])
+}
+
+model DatasetType {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  targetTable    String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([name])
+  @@index([organizationId, name])
+}
+
+model ImportSession {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  fileName           String
+  entityType         String
+  rowCount           Int
+  successCount       Int                 @default(0)
+  failureCount       Int                 @default(0)
+  status             ImportSessionStatus @default(PENDING)
+  createdAt          DateTime            @default(now())
+  completedAt        DateTime?
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dataQualityMetrics DataQualityMetric[]
+
+  @@index([organizationId, createdAt])
+}
+
+model DataSource {
+  id             String         @id @default(cuid())
+  organizationId String
+  type           DataSourceType
+  datasetType    String
+  name           String
+  externalId     String
+  sheetName      String?
+  range          String?
+  columnMapping  Json?
+  refreshMinutes Int            @default(60)
+  lastSyncAt     DateTime?
+  lastContentHash String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model AssistanceRecord {
+  id               String   @id @default(cuid())
+  organizationId   String
+  organizationName String
+  programName      String
+  category         String
+  householdsServed Int
+  reportDate       DateTime
+  latitude         Float?
+  longitude        Float?
+  city             String?
+  zipcode          String?
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model GoogleIntegration {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  accessToken    String
+  refreshToken   String?
+  expiryDate     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model DataQualityMetric {
+  id                     String         @id @default(cuid())
+  organizationId         String
+  datasetType            String
+  totalRecords           Int
+  missingFieldCount      Int
+  validationFailureCount Int
+  lastImportSessionId    String?
+  qualityScore           Int
+  createdAt              DateTime       @default(now())
+  organization           Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastImportSession      ImportSession? @relation(fields: [lastImportSessionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, datasetType])
+}
+
 model Notification {
   id        String   @id @default(cuid())
   userId    String
@@ -516,6 +662,65 @@ model InfrastructureLayer {
   @@index([organizationId])
 }
 
+model InfrastructureAsset {
+  id             String                        @id @default(uuid())
+  organizationId String
+  name           String
+  department     String?
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  snapshots      InfrastructureAssetSnapshot[]
+  risks          InfrastructureRisk[]
+  trends         InfrastructureTrend[]
+
+  @@index([organizationId])
+  @@index([organizationId, name])
+}
+
+model InfrastructureAssetSnapshot {
+  id             String   @id @default(uuid())
+  assetId        String
+  organizationId String
+  conditionScore Int
+  source         String
+  recordedAt     DateTime @default(now())
+
+  asset InfrastructureAsset @relation(fields: [assetId], references: [id])
+
+  @@index([assetId])
+  @@index([organizationId, recordedAt])
+}
+
+model InfrastructureRisk {
+  id             String                  @id @default(cuid())
+  organizationId String
+  assetId        String
+  conditionScore Int
+  riskLevel      InfrastructureRiskLevel
+  createdAt      DateTime                @default(now())
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          InfrastructureAsset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, riskLevel])
+  @@index([assetId])
+}
+
+model InfrastructureTrend {
+  id             String                       @id @default(cuid())
+  organizationId String
+  assetId        String
+  trendDirection InfrastructureTrendDirection
+  scoreChange    Int
+  firstScore     Int
+  latestScore    Int
+  createdAt      DateTime                     @default(now())
+  organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset          InfrastructureAsset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, trendDirection])
+  @@index([assetId])
+}
+
 model Asset {
   id                                                    String                @id @default(cuid())
   organizationId                                        String
@@ -543,24 +748,27 @@ model Asset {
 }
 
 model WorkOrder {
-  id                                                        String             @id @default(cuid())
+  id                                                        String       @id @default(cuid())
   organizationId                                            String
   assetId                                                   String?
   issueId                                                   String?
   departmentId                                              String?
   title                                                     String
   description                                               String?
-  status                                                    WorkOrderStatus    @default(OPEN)
-  priority                                                  WorkOrderPriority?
-  scheduledDate                                             DateTime?
+  status                                                    String       @default("OPEN")
+  priority                                                  String       @default("NORMAL")
+  assignedTo                                                String?
+  estimatedCost                                             Float?
+  actualCost                                                Float?
+  startedAt                                                 DateTime?
   completedAt                                               DateTime?
-  createdAt                                                 DateTime           @default(now())
-  updatedAt                                                 DateTime           @updatedAt
-  asset                                                     Asset?             @relation(fields: [assetId], references: [id])
-  department                                                Department?        @relation(fields: [departmentId], references: [id])
-  issue                                                     IssueReport?       @relation(fields: [issueId], references: [id])
-  IssueReport_WorkOrder_organizationId_issueIdToIssueReport IssueReport?       @relation("WorkOrder_organizationId_issueIdToIssueReport", fields: [organizationId, issueId], references: [organizationId, id], onDelete: SetNull, map: "WorkOrder_org_issue_tenant_fkey")
-  organization                                              Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt                                                 DateTime     @default(now())
+  updatedAt                                                 DateTime     @updatedAt
+  asset                                                     Asset?       @relation(fields: [assetId], references: [id])
+  department                                                Department?  @relation(fields: [departmentId], references: [id])
+  issue                                                     IssueReport? @relation(fields: [issueId], references: [id])
+  IssueReport_WorkOrder_organizationId_issueIdToIssueReport IssueReport? @relation("WorkOrder_organizationId_issueIdToIssueReport", fields: [organizationId, issueId], references: [organizationId, id], onDelete: SetNull, map: "WorkOrder_org_issue_tenant_fkey")
+  organization                                              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([assetId])
@@ -624,6 +832,35 @@ model Insight {
   @@index([sourceEntity, sourceId])
 }
 
+model OperationalInsight {
+  id             String       @id @default(cuid())
+  organizationId String
+  type           String
+  title          String
+  description    String
+  severity       String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([severity])
+}
+
+model SystemMetric {
+  id             String       @id @default(cuid())
+  organizationId String
+  metricType     String
+  severity       String       @default("INFO")
+  value          Float
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([metricType], map: "SystemMetric_metricType_idx")
+  @@index([organizationId, severity], map: "SystemMetric_org_severity_idx")
+  @@index([organizationId, metricType, createdAt], map: "SystemMetric_org_type_created_idx")
+}
+
 model CouncilReport {
   id             String       @id @default(cuid())
   organizationId String
@@ -637,6 +874,22 @@ model CouncilReport {
   @@index([organizationId, createdAt])
 }
 
+model ScheduledReport {
+  id              String       @id @default(cuid())
+  organizationId  String
+  reportType      String
+  frequency       String
+  emailRecipients String
+  lastRunAt       DateTime?
+  nextRunAt       DateTime
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, nextRunAt])
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model spatial_ref_sys {
   srid      Int     @id
@@ -646,10 +899,12 @@ model spatial_ref_sys {
   proj4text String? @db.VarChar(2048)
 }
 
-enum Role {
+enum LegacyStaffRole {
   ADMIN
   EDITOR
   VIEWER
+
+  @@map("Role")
 }
 
 enum KPIStatus {
@@ -706,16 +961,26 @@ enum GrantComplianceStatus {
   NON_COMPLIANT
 }
 
-enum WorkOrderStatus {
-  OPEN
-  IN_PROGRESS
-  BLOCKED
+enum ImportSessionStatus {
+  PENDING
+  RUNNING
   COMPLETED
+  FAILED
 }
 
-enum WorkOrderPriority {
+enum DataSourceType {
+  GOOGLE_SHEETS
+  MICROSOFT_EXCEL
+}
+
+enum InfrastructureRiskLevel {
   LOW
   MEDIUM
   HIGH
-  URGENT
+}
+
+enum InfrastructureTrendDirection {
+  IMPROVING
+  STABLE
+  DECLINING
 }

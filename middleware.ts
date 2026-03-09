@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { globalLimiter } from "@/lib/rate-limit";
+import { hasAnyRole } from "@/lib/role-checks";
 import { buildContentSecurityPolicy } from "@/lib/security/csp";
 
 function withSecurityHeaders(response: NextResponse, nonce: string) {
@@ -54,6 +55,42 @@ export async function middleware(req: NextRequest) {
 
     if (!isStaff) {
       return withSecurityHeaders(NextResponse.redirect(new URL("/citizen/dashboard", req.url)), nonce);
+    }
+
+    const roleRules: Array<{ prefix: string; roles: string[] }> = [
+      {
+        prefix: "/dashboard/organization",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN"],
+      },
+      {
+        prefix: "/dashboard/work-orders",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN", "DEPARTMENT_ADMIN", "STAFF"],
+      },
+      {
+        prefix: "/dashboard/reports",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN", "COUNCIL_MEMBER"],
+      },
+      {
+        prefix: "/dashboard/insights",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN", "COUNCIL_MEMBER"],
+      },
+      {
+        prefix: "/dashboard/data-browser",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN", "DEPARTMENT_ADMIN"],
+      },
+      {
+        prefix: "/dashboard/data/import-gis",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN", "DEPARTMENT_ADMIN"],
+      },
+      {
+        prefix: "/dashboard/system/health",
+        roles: ["SYSTEM_ADMIN", "CITY_ADMIN"],
+      },
+    ];
+
+    const matchingRule = roleRules.find((rule) => pathname.startsWith(rule.prefix));
+    if (matchingRule && !hasAnyRole(token as { role?: string }, matchingRule.roles)) {
+      return withSecurityHeaders(NextResponse.redirect(new URL("/dashboard", req.url)), nonce);
     }
   }
 

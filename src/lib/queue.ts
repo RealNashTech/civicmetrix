@@ -1,4 +1,5 @@
 import { Queue } from "bullmq";
+import { instrumentQueueMetrics } from "@/lib/metrics";
 
 const DEFAULT_ATTEMPTS = 3;
 
@@ -86,6 +87,20 @@ export const civicIntelligenceQueue = connection
       },
     })
   : null;
+export const dataSourceSyncQueue = connection
+  ? new Queue("data-source-sync", {
+      connection,
+      defaultJobOptions: {
+        attempts: DEFAULT_ATTEMPTS,
+        backoff: {
+          type: "exponential",
+          delay: 1_000,
+        },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      },
+    })
+  : null;
 export const deadLetterQueue = connection
   ? new Queue("dead-letter", {
       connection,
@@ -96,3 +111,25 @@ export const deadLetterQueue = connection
       },
     })
   : null;
+
+if (eventProcessingQueue) {
+  instrumentQueueMetrics("event-processing", eventProcessingQueue);
+}
+if (grantRemindersQueue) {
+  instrumentQueueMetrics("grant-reminders", grantRemindersQueue);
+}
+if (issueSlaQueue) {
+  instrumentQueueMetrics("issue-sla", issueSlaQueue);
+}
+if (maintenanceSchedulerQueue) {
+  instrumentQueueMetrics("maintenance-scheduler", maintenanceSchedulerQueue);
+}
+if (civicIntelligenceQueue) {
+  instrumentQueueMetrics("civic-intelligence", civicIntelligenceQueue);
+}
+if (dataSourceSyncQueue) {
+  instrumentQueueMetrics("data-source-sync", dataSourceSyncQueue);
+}
+if (deadLetterQueue) {
+  instrumentQueueMetrics("dead-letter", deadLetterQueue);
+}

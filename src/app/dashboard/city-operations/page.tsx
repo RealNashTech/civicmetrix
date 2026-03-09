@@ -203,8 +203,8 @@ export default async function CityOperationsPage() {
   const topSpendingDepartments = Object.values(spendingByDepartment)
     .sort((a, b) => b.spent - a.spent)
     .slice(0, 5);
-  const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETED").length;
-  const completedWorkOrders = workOrders.filter((order) => order.status === "COMPLETED").length;
+  const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETE").length;
+  const completedWorkOrders = workOrders.filter((order) => order.status === "COMPLETE").length;
   const maintenanceCompletionRate = asPercent(completedWorkOrders, workOrders.length);
   const overdueMaintenance = maintenanceSchedules.filter((schedule) => {
     const baseDate = schedule.lastCompleted ?? schedule.createdAt;

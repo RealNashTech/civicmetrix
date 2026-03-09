@@ -59,7 +59,7 @@ export async function getCivicInsights(organizationId: string): Promise<string[]
     insights.push(`${topDepartment} has the highest unresolved issue backlog (${backlog}).`);
   }
 
-  const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETED").length;
+  const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETE").length;
   if (openWorkOrders > 0) {
     insights.push(`${openWorkOrders} work orders remain open across city operations.`);
   }

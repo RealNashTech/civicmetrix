@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { hasAnyRole } from "@/lib/permissions";
 
 export default async function AuditPage() {
 
@@ -8,7 +9,7 @@ export default async function AuditPage() {
   const user = session?.user;
 
   if (!user?.organizationId) notFound();
-  if (user.role !== "ADMIN") notFound();
+  if (!hasAnyRole(user, ["SYSTEM_ADMIN", "CITY_ADMIN", "ADMIN"])) notFound();
 
   const logs = await db().auditLog.findMany({
     where: {

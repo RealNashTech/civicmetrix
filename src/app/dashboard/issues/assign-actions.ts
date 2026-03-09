@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { createAuditLog } from "@/lib/audit";
 import { createNotification, notifyOrganizationEditors } from "@/lib/notifications";
-import { hasDepartmentAccess } from "@/lib/permissions";
+import { hasDepartmentAccess } from "@/lib/department-access";
 import { db } from "@/lib/db";
 import { requireStaffUser } from "@/lib/security/authorization";
 

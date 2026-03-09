@@ -1,7 +1,15 @@
 import { hasMinimumRole } from "@/lib/permissions";
 import { AppRole } from "@/types/roles";
 
-const STAFF_ROLES = new Set<AppRole>(["ADMIN", "EDITOR", "VIEWER"]);
+const STAFF_ROLES = new Set<AppRole>([
+  "ADMIN",
+  "EDITOR",
+  "VIEWER",
+  "SYSTEM_ADMIN",
+  "CITY_ADMIN",
+  "DEPARTMENT_ADMIN",
+  "STAFF",
+]);
 
 export class AuthorizationError extends Error {
   status: number;

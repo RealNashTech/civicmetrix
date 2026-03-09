@@ -1,4 +1,4 @@
-import { InsightType, WorkOrderStatus } from "@prisma/client";
+import { InsightType } from "@prisma/client";
 
 import CivicIntelligenceMap from "@/components/maps/civic-intelligence-map";
 import { Card } from "@/components/ui/card";
@@ -137,7 +137,7 @@ export default async function CommandCenterPage() {
       where: {
         organizationId: user.organizationId,
         status: {
-          in: [WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.BLOCKED],
+          in: ["OPEN", "IN_PROGRESS"],
         },
       },
       select: {

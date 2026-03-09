@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 
+import { hasAnyRole } from "@/lib/permissions";
 import { AppRole } from "@/types/roles";
 
 type DashboardShellProps = {
@@ -51,9 +52,11 @@ export function DashboardShell({
             <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/alerts">
               Alerts
             </Link>
-            <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/insights">
-              Insights
-            </Link>
+            {hasAnyRole({ role }, ["SYSTEM_ADMIN", "CITY_ADMIN", "COUNCIL_MEMBER"]) ? (
+              <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/insights">
+                Insights
+              </Link>
+            ) : null}
             <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/issues">
               Issues
             </Link>
@@ -93,12 +96,30 @@ export function DashboardShell({
             <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/assets">
               Assets
             </Link>
+            <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/assistance">
+              Assistance
+            </Link>
             <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/documents">
               Documents
             </Link>
-            {role === "ADMIN" ? (
+            {hasAnyRole({ role }, ["SYSTEM_ADMIN", "CITY_ADMIN", "DEPARTMENT_ADMIN"]) ? (
+            <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/data-browser">
+              Data Browser
+            </Link>
+            ) : null}
+            {hasAnyRole({ role }, ["SYSTEM_ADMIN", "CITY_ADMIN", "DEPARTMENT_ADMIN"]) ? (
+              <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/data/import-gis">
+                GIS Import
+              </Link>
+            ) : null}
+            {hasAnyRole({ role }, ["SYSTEM_ADMIN", "CITY_ADMIN", "ADMIN"]) ? (
               <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/audit">
                 Audit Logs
+              </Link>
+            ) : null}
+            {hasAnyRole({ role }, ["SYSTEM_ADMIN", "CITY_ADMIN"]) ? (
+              <Link className="block rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100" href="/dashboard/system/health">
+                System Health
               </Link>
             ) : null}
           </nav>

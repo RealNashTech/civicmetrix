@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { Prisma, WorkOrderPriority } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import { dbSystem } from "@/lib/db";
 
@@ -450,10 +450,10 @@ async function seedAssets(organizationId: string, departmentIds: string[]) {
 }
 
 async function seedWorkOrders(organizationId: string, issueIds: string[], departmentIds: string[]) {
-  const statuses: Array<"OPEN" | "IN_PROGRESS" | "COMPLETED"> = [
+  const statuses: Array<"OPEN" | "IN_PROGRESS" | "COMPLETE"> = [
     "OPEN",
     "IN_PROGRESS",
-    "COMPLETED",
+    "COMPLETE",
   ];
 
   const rows = Array.from({ length: 15 }).map((_, index) => {
@@ -467,12 +467,12 @@ async function seedWorkOrders(organizationId: string, issueIds: string[], depart
       status,
       priority:
         index % 5 === 0
-          ? WorkOrderPriority.HIGH
+          ? "HIGH"
           : index % 3 === 0
-            ? WorkOrderPriority.MEDIUM
-            : WorkOrderPriority.LOW,
-      scheduledDate: status === "COMPLETED" ? daysAgo(2) : new Date(),
-      completedAt: status === "COMPLETED" ? daysAgo(1) : null,
+            ? "MEDIUM"
+            : "LOW",
+      startedAt: status === "COMPLETE" ? daysAgo(2) : new Date(),
+      completedAt: status === "COMPLETE" ? daysAgo(1) : null,
       createdAt: daysAgo(Math.floor(Math.random() * 10)),
       updatedAt: new Date(),
     };

@@ -3,8 +3,10 @@ import { Job, Queue, Worker } from "bullmq";
 
 import { runWithObservabilityContext } from "@/lib/observability/context";
 import { logger } from "@/lib/observability/logger";
+import { civicWorkerJobsStartedTotal } from "@/lib/metrics";
 import { recordDlqAlert, recordWorkerFailure } from "@/lib/observability/metrics";
 import { installProcessErrorHandlers } from "@/lib/observability/process-errors";
+import { recordMetricForAllOrganizations } from "@/lib/system-metrics";
 import { runEventWorker } from "@/workers/event-worker";
 import { runGrantDeadlineWorker } from "@/workers/grant-deadline-worker";
 import { runGrantPipelineRefreshWorker } from "@/workers/grant-pipeline-refresh-worker";
@@ -15,6 +17,15 @@ import { runKpiTrendWorker } from "@/workers/intelligence/kpi-trend-worker";
 import { runSpatialClusterWorker } from "@/workers/intelligence/spatial-cluster-worker";
 import { runIssueSlaWorker } from "@/workers/issue-sla-worker";
 import { runMaintenanceSchedulerWorker } from "@/workers/maintenance-scheduler-worker";
+import { runReportSchedulerWorker } from "@/workers/report-scheduler";
+import { runWorkOrderGeneratorWorker } from "@/workers/work-order-generator";
+import { runDataSourceSyncWorker } from "@/workers/data-source-sync";
+import {
+  runCivicIntelligenceWorker,
+  runRefreshDashboardsWorker,
+  RefreshDashboardsJobPayload,
+} from "@/workers/civic-intelligence-worker";
+import { runUploadImportWorker, UploadImportJobPayload } from "@/workers/upload-import-worker";
 
 const JOB_ATTEMPTS = 3;
 const DLQ_ALERT_THRESHOLD = 25;
@@ -55,6 +66,7 @@ async function runInstrumentedJob(
       jobId: String(job.id ?? ""),
     },
     async () => {
+      civicWorkerJobsStartedTotal.inc({ worker: workerType });
       logger.info("worker_job_started", {
         workerType,
         jobId: job.id ?? null,
@@ -107,6 +119,7 @@ async function scheduleRepeatableJobs(
   issueSlaQueue: Queue,
   maintenanceQueue: Queue,
   civicIntelligenceQueue: Queue,
+  dataSourceSyncQueue: Queue,
   deadLetterQueue: Queue,
 ) {
   await deadLetterQueue.add(
@@ -216,6 +229,54 @@ async function scheduleRepeatableJobs(
     },
   );
 
+  await maintenanceQueue.add(
+    "run-work-order-generator-worker",
+    {},
+    {
+      jobId: "repeat:work-order-generator-worker:10m",
+      repeat: { every: 10 * 60 * 1000 },
+      attempts: JOB_ATTEMPTS,
+      backoff: {
+        type: "exponential",
+        delay: 1_000,
+      },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    },
+  );
+
+  await maintenanceQueue.add(
+    "run-report-scheduler-worker",
+    {},
+    {
+      jobId: "repeat:report-scheduler-worker:30m",
+      repeat: { every: 30 * 60 * 1000 },
+      attempts: JOB_ATTEMPTS,
+      backoff: {
+        type: "exponential",
+        delay: 1_000,
+      },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    },
+  );
+
+  await civicIntelligenceQueue.add(
+    "run-civic-intelligence-worker",
+    {},
+    {
+      jobId: "repeat:civic-intelligence-worker:6h",
+      repeat: { every: 6 * 60 * 60 * 1000 },
+      attempts: JOB_ATTEMPTS,
+      backoff: {
+        type: "exponential",
+        delay: 1_000,
+      },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    },
+  );
+
   await civicIntelligenceQueue.add(
     "run-issue-anomaly-worker",
     {},
@@ -279,6 +340,22 @@ async function scheduleRepeatableJobs(
       removeOnFail: 50,
     },
   );
+
+  await dataSourceSyncQueue.add(
+    "run-data-source-sync-worker",
+    {},
+    {
+      jobId: "repeat:data-source-sync-worker:15m",
+      repeat: { every: 15 * 60 * 1000 },
+      attempts: JOB_ATTEMPTS,
+      backoff: {
+        type: "exponential",
+        delay: 1_000,
+      },
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    },
+  );
 }
 
 async function bootstrapWorkers() {
@@ -290,6 +367,7 @@ async function bootstrapWorkers() {
   const issueSlaQueue = new Queue("issue-sla", { connection });
   const maintenanceQueue = new Queue("maintenance-scheduler", { connection });
   const civicIntelligenceQueue = new Queue("civic-intelligence", { connection });
+  const dataSourceSyncQueue = new Queue("data-source-sync", { connection });
   const deadLetterQueue = new Queue("dead-letter", { connection });
 
   await scheduleRepeatableJobs(
@@ -298,6 +376,7 @@ async function bootstrapWorkers() {
     issueSlaQueue,
     maintenanceQueue,
     civicIntelligenceQueue,
+    dataSourceSyncQueue,
     deadLetterQueue,
   );
 
@@ -312,7 +391,20 @@ async function bootstrapWorkers() {
     "event-processing",
     async (job) => {
       await runInstrumentedJob("event-processing", job, async () => {
-        await runEventWorker();
+        if (job.name === "upload-import") {
+          await runUploadImportWorker(job.data as UploadImportJobPayload);
+          return;
+        }
+
+        if (job.name === "run-event-worker") {
+          await runEventWorker();
+          return;
+        }
+
+        logger.error("worker_unknown_job", {
+          workerType: "event-processing",
+          jobName: job.name,
+        });
       });
     },
     workerOptions,
@@ -360,7 +452,25 @@ async function bootstrapWorkers() {
     "maintenance-scheduler",
     async (job) => {
       await runInstrumentedJob("maintenance-scheduler", job, async () => {
-        await runMaintenanceSchedulerWorker();
+        if (job.name === "run-maintenance-scheduler-worker") {
+          await runMaintenanceSchedulerWorker();
+          return;
+        }
+
+        if (job.name === "run-work-order-generator-worker") {
+          await runWorkOrderGeneratorWorker();
+          return;
+        }
+
+        if (job.name === "run-report-scheduler-worker") {
+          await runReportSchedulerWorker();
+          return;
+        }
+
+        logger.error("worker_unknown_job", {
+          workerType: "maintenance-scheduler",
+          jobName: job.name,
+        });
       });
     },
     workerOptions,
@@ -390,8 +500,36 @@ async function bootstrapWorkers() {
           return;
         }
 
+        if (job.name === "run-civic-intelligence-worker") {
+          await runCivicIntelligenceWorker();
+          return;
+        }
+
+        if (job.name === "refresh-dashboards") {
+          await runRefreshDashboardsWorker(job.data as RefreshDashboardsJobPayload);
+          return;
+        }
+
         logger.error("worker_unknown_job", {
           workerType: "civic-intelligence",
+          jobName: job.name,
+        });
+      });
+    },
+    workerOptions,
+  );
+
+  const dataSourceSyncWorker = new Worker(
+    "data-source-sync",
+    async (job) => {
+      await runInstrumentedJob("data-source-sync", job, async () => {
+        if (job.name === "run-data-source-sync-worker") {
+          await runDataSourceSyncWorker(job.data as { dataSourceId?: string } | undefined);
+          return;
+        }
+
+        logger.error("worker_unknown_job", {
+          workerType: "data-source-sync",
           jobName: job.name,
         });
       });
@@ -415,9 +553,31 @@ async function bootstrapWorkers() {
         }
 
         if (job.name === "run-dead-letter-metrics") {
-          const counts = await deadLetterQueue.getJobCounts("waiting", "active", "failed");
+          const [counts, eventCounts, grantCounts, issueCounts, maintenanceCounts, civicCounts, dataSourceCounts] = await Promise.all([
+            deadLetterQueue.getJobCounts("waiting", "active", "failed"),
+            eventQueue.getJobCounts("waiting", "active", "delayed"),
+            grantReminderQueue.getJobCounts("waiting", "active", "delayed"),
+            issueSlaQueue.getJobCounts("waiting", "active", "delayed"),
+            maintenanceQueue.getJobCounts("waiting", "active", "delayed"),
+            civicIntelligenceQueue.getJobCounts("waiting", "active", "delayed"),
+            dataSourceSyncQueue.getJobCounts("waiting", "active", "delayed"),
+          ]);
           const waiting = counts.waiting ?? 0;
           const failed = counts.failed ?? 0;
+          const queueDepths = [
+            { name: "event-processing", value: (eventCounts.waiting ?? 0) + (eventCounts.active ?? 0) + (eventCounts.delayed ?? 0) },
+            { name: "grant-reminders", value: (grantCounts.waiting ?? 0) + (grantCounts.active ?? 0) + (grantCounts.delayed ?? 0) },
+            { name: "issue-sla", value: (issueCounts.waiting ?? 0) + (issueCounts.active ?? 0) + (issueCounts.delayed ?? 0) },
+            { name: "maintenance-scheduler", value: (maintenanceCounts.waiting ?? 0) + (maintenanceCounts.active ?? 0) + (maintenanceCounts.delayed ?? 0) },
+            { name: "civic-intelligence", value: (civicCounts.waiting ?? 0) + (civicCounts.active ?? 0) + (civicCounts.delayed ?? 0) },
+            { name: "data-source-sync", value: (dataSourceCounts.waiting ?? 0) + (dataSourceCounts.active ?? 0) + (dataSourceCounts.delayed ?? 0) },
+            { name: "dead-letter", value: waiting + (counts.active ?? 0) + failed },
+          ];
+          await Promise.all(
+            queueDepths.map((item) =>
+              recordMetricForAllOrganizations(`QUEUE_DEPTH:${item.name}`, item.value),
+            ),
+          );
           if (waiting > DLQ_ALERT_THRESHOLD || failed > 0) {
             recordDlqAlert();
             logger.error("worker_dead_letter_threshold_exceeded", {
@@ -533,6 +693,24 @@ async function bootstrapWorkers() {
     void pushToDeadLetterQueue(deadLetterQueue, "civic-intelligence", job, error);
   });
 
+  dataSourceSyncWorker.on("error", (error) => {
+    logger.error("worker_error", {
+      workerType: "data-source-sync",
+      failureReason: error.message,
+    });
+  });
+  dataSourceSyncWorker.on("failed", (job, error) => {
+    recordWorkerFailure("data-source-sync");
+    logger.error("worker_failed", {
+      workerType: "data-source-sync",
+      jobName: job?.name ?? null,
+      jobId: job?.id ?? null,
+      retryCount: job?.attemptsMade ?? 0,
+      failureReason: error.message,
+    });
+    void pushToDeadLetterQueue(deadLetterQueue, "data-source-sync", job, error);
+  });
+
   deadLetterWorker.on("error", (error) => {
     logger.error("worker_error", {
       workerType: "dead-letter",
@@ -555,6 +733,7 @@ async function bootstrapWorkers() {
   logger.info("worker_started", { workerType: "issue-sla" });
   logger.info("worker_started", { workerType: "maintenance-scheduler" });
   logger.info("worker_started", { workerType: "civic-intelligence" });
+  logger.info("worker_started", { workerType: "data-source-sync" });
   logger.info("worker_started", { workerType: "dead-letter" });
 }
 

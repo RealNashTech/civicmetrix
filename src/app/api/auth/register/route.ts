@@ -6,6 +6,7 @@ import { dbSystem } from "@/lib/db";
 import { withApiObservability } from "@/lib/observability/http";
 import { AuthorizationError } from "@/lib/policies/base";
 import { enforceRateLimit } from "@/lib/security/rate-limit";
+import { provisionOrganization } from "@/services/organization-provisioning";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -46,24 +47,38 @@ async function handlePost(request: Request) {
 
     const passwordHash = await hash(password, 12);
 
-    await dbSystem().$transaction(async (tx) => {
+    const created = await dbSystem().$transaction(async (tx) => {
       const organization = await tx.organization.create({
         data: {
           name: organizationName,
           slug: normalizedSlug,
         },
+        select: {
+          id: true,
+        },
       });
 
-      await tx.user.create({
+      const user = await tx.user.create({
         data: {
           name,
           email: normalizedEmail,
           passwordHash,
-          role: "ADMIN",
+          legacyRole: "ADMIN",
           organizationId: organization.id,
         },
+        select: {
+          id: true,
+          organizationId: true,
+        },
       });
+
+      return {
+        organizationId: organization.id,
+        userId: user.id,
+      };
     });
+
+    await provisionOrganization(created.organizationId, created.userId);
 
     return NextResponse.json({ ok: true }, { status: 201 });
   } catch (error) {

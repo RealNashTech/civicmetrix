@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { Card } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { requireOrganization } from "@/lib/auth/require-org";
+import { requireAnyRole, RoleAccessError } from "@/lib/permissions";
 import { tenantDb } from "@/lib/tenantDb";
 
 type OrganizationProfile = {
@@ -17,7 +19,8 @@ type OrganizationUser = {
   id: string;
   name: string;
   email: string;
-  role: string;
+  legacyRole: string;
+  role: { name: string } | null;
   createdAt: Date;
 };
 
@@ -80,6 +83,14 @@ export default async function OrganizationControlCenterPage() {
   if (!session?.user) {
     return null;
   }
+  try {
+    await requireAnyRole(["SYSTEM_ADMIN", "CITY_ADMIN"], session.user);
+  } catch (error) {
+    if (error instanceof RoleAccessError) {
+      notFound();
+    }
+    throw error;
+  }
 
   const organizationId = requireOrganization(session);
 
@@ -103,7 +114,10 @@ export default async function OrganizationControlCenterPage() {
           id: true,
           name: true,
           email: true,
-          role: true,
+          legacyRole: true,
+          role: {
+            select: { name: true },
+          },
           createdAt: true,
         },
       }),
@@ -190,6 +204,9 @@ export default async function OrganizationControlCenterPage() {
         <p className="text-sm text-slate-600">
           Tenant-scoped governance, integrations, and operational visibility.
         </p>
+        <Link href="/dashboard/organization/roles" className="mt-2 inline-block text-sm text-blue-600 hover:underline">
+          Manage Roles
+        </Link>
       </div>
 
       <Card title="Organization Profile">
@@ -228,7 +245,7 @@ export default async function OrganizationControlCenterPage() {
                 <tr key={user.id} className="border-b last:border-b-0">
                   <td className="py-2 pr-2 text-slate-900">{user.name}</td>
                   <td className="py-2 pr-2">{user.email}</td>
-                  <td className="py-2 pr-2">{user.role}</td>
+                  <td className="py-2 pr-2">{user.role?.name ?? user.legacyRole}</td>
                   <td className="py-2">{formatDate(user.createdAt)}</td>
                 </tr>
               ))}

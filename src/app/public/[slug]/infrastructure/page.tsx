@@ -1,8 +1,9 @@
 import Link from "next/link";
 
-import AssetMap from "@/components/maps/asset-map";
+import UnifiedCivicMap from "@/components/maps/unified-civic-map";
+import PublicTransparencyCharts from "@/app/public/[slug]/PublicTransparencyCharts";
 import { getOrganizationBySlug } from "@/lib/public/getOrganizationBySlug";
-import { dbSystem } from "@/lib/db";
+import { tenantDb } from "@/lib/tenantDb";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -10,141 +11,185 @@ type Props = {
 
 export const revalidate = 300;
 
-function asPercent(part: number, total: number) {
-  if (total <= 0) {
-    return 0;
-  }
-  return Math.round((part / total) * 100);
-}
+type InfrastructurePageData = {
+  assets: Array<{
+    id: string;
+    name: string;
+    status: string;
+    conditionScore: number | null;
+    createdAt: Date;
+    latitude: number | null;
+    longitude: number | null;
+    department: { name: string } | null;
+  }>;
+  issues: Array<{
+    id: string;
+    title: string;
+    status: string;
+    createdAt: Date;
+    latitude: number;
+    longitude: number;
+    department: { name: string } | null;
+  }>;
+  workOrders: Array<{
+    id: string;
+    title: string;
+    status: string;
+    createdAt: Date;
+    department: { name: string } | null;
+    asset: { name: string; latitude: number | null; longitude: number | null } | null;
+    issue: { title: string; latitude: number | null; longitude: number | null } | null;
+  }>;
+};
 
 export default async function PublicInfrastructurePage({ params }: Props) {
-  const resolvedParams = await params;
-  const organization = await getOrganizationBySlug(resolvedParams.slug);
+  const { slug } = await params;
+  const organization = await getOrganizationBySlug(slug);
 
-  const publicPrograms = await dbSystem().program.findMany({
-    where: { organizationId: organization.id, isPublic: true },
-    select: { departmentId: true },
-  });
-  const publicDepartmentIds = [...new Set(publicPrograms.map((program) => program.departmentId))];
-
-  const [assets, workOrders] = await Promise.all([
-    dbSystem().asset.findMany({
-      where: {
-        organizationId: organization.id,
-        departmentId: { in: publicDepartmentIds },
-      },
-      include: {
-        department: {
-          select: { name: true },
+  const data = await tenantDb<InfrastructurePageData>(organization.id, async (tx) => {
+    const [assets, issues, workOrders] = await Promise.all([
+      tx.asset.findMany({
+        where: {
+          organizationId: organization.id,
         },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    dbSystem().workOrder.findMany({
-      where: {
-        organizationId: organization.id,
-        OR: [
-          { departmentId: { in: publicDepartmentIds } },
-          { asset: { departmentId: { in: publicDepartmentIds } } },
-        ],
-      },
-      select: { status: true },
-    }),
-  ]);
+        include: {
+          department: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+      }),
+      tx.issueReport.findMany({
+        where: {
+          organizationId: organization.id,
+          latitude: { not: null },
+          longitude: { not: null },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          latitude: true,
+          longitude: true,
+          department: { select: { name: true } },
+        },
+      }),
+      tx.workOrder.findMany({
+        where: {
+          organizationId: organization.id,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          department: { select: { name: true } },
+          asset: { select: { name: true, latitude: true, longitude: true } },
+          issue: { select: { title: true, latitude: true, longitude: true } },
+        },
+      }),
+    ]);
 
-  const averageCondition =
-    assets.length > 0
-      ? Math.round(assets.reduce((sum, asset) => sum + (asset.conditionScore ?? 100), 0) / assets.length)
-      : 0;
-  const below50 = assets.filter((asset) => (asset.conditionScore ?? 100) < 50).length;
-  const openWorkOrders = workOrders.filter((order) => order.status !== "COMPLETED").length;
-  const completionRate = asPercent(
-    workOrders.filter((order) => order.status === "COMPLETED").length,
-    workOrders.length,
-  );
+    return { assets, issues, workOrders };
+  });
 
-  const mappedAssets = assets
+  const assetConditionDistribution = [
+    {
+      bucket: "0-39",
+      count: data.assets.filter((item) => (item.conditionScore ?? 100) < 40).length,
+    },
+    {
+      bucket: "40-59",
+      count: data.assets.filter((item) => (item.conditionScore ?? 100) >= 40 && (item.conditionScore ?? 100) < 60).length,
+    },
+    {
+      bucket: "60-79",
+      count: data.assets.filter((item) => (item.conditionScore ?? 100) >= 60 && (item.conditionScore ?? 100) < 80).length,
+    },
+    {
+      bucket: "80-100",
+      count: data.assets.filter((item) => (item.conditionScore ?? 100) >= 80).length,
+    },
+  ];
+
+  const mapAssets = data.assets
     .filter((asset) => asset.latitude != null && asset.longitude != null)
     .map((asset) => ({
       id: asset.id,
       name: asset.name,
-      type: asset.type,
+      department: asset.department?.name ?? null,
       status: asset.status,
-      conditionScore: asset.conditionScore ?? 100,
-      latitude: asset.latitude as number,
-      longitude: asset.longitude as number,
+      conditionScore: asset.conditionScore,
+      createdAt: asset.createdAt.toISOString(),
+      latitude: Number(asset.latitude),
+      longitude: Number(asset.longitude),
     }));
 
+  const mapIssues = data.issues.map((issue) => ({
+    id: issue.id,
+    title: issue.title,
+    department: issue.department?.name ?? null,
+    status: issue.status,
+    createdAt: issue.createdAt.toISOString(),
+    latitude: Number(issue.latitude),
+    longitude: Number(issue.longitude),
+  }));
+
+  const mapWorkOrders = data.workOrders
+    .map((order) => {
+      const latitude = order.asset?.latitude ?? order.issue?.latitude ?? null;
+      const longitude = order.asset?.longitude ?? order.issue?.longitude ?? null;
+      if (latitude == null || longitude == null) {
+        return null;
+      }
+      return {
+        id: order.id,
+        title: order.title,
+        department: order.department?.name ?? null,
+        status: order.status,
+        createdAt: order.createdAt.toISOString(),
+        linkedAsset: order.asset?.name ?? null,
+        linkedIssue: order.issue?.title ?? null,
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-8">
+    <div className="mx-auto max-w-7xl space-y-6 p-8">
       <div>
-        <Link href={`/public/${resolvedParams.slug}`} className="text-sm text-blue-600 hover:underline">
+        <Link href={`/public/${slug}`} className="text-sm text-blue-600 hover:underline">
           ← Back to Public Home
         </Link>
         <h1 className="mt-2 text-3xl font-bold">{organization.name} Infrastructure</h1>
-        <p className="text-sm text-slate-600">Public infrastructure condition and maintenance performance.</p>
+        <p className="text-sm text-slate-600">Infrastructure assets, condition distribution, and mapped civic operations.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <p className="text-xs text-slate-500">Total Assets</p>
-          <p className="text-2xl font-semibold text-slate-900">{assets.length}</p>
+          <p className="text-2xl font-semibold text-slate-900">{data.assets.length}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Average Condition</p>
-          <p className="text-2xl font-semibold text-slate-900">{averageCondition}%</p>
+          <p className="text-xs text-slate-500">Assets Below 40</p>
+          <p className="text-2xl font-semibold text-rose-700">{assetConditionDistribution[0].count}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Assets Below 50</p>
-          <p className="text-2xl font-semibold text-rose-700">{below50}</p>
+          <p className="text-xs text-slate-500">Mapped Work Orders</p>
+          <p className="text-2xl font-semibold text-slate-900">{mapWorkOrders.length}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs text-slate-500">Maintenance Completion</p>
-          <p className="text-2xl font-semibold text-slate-900">{completionRate}%</p>
-          <p className="text-xs text-slate-500">{openWorkOrders} open work orders</p>
-        </div>
-      </div>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">Infrastructure Map</h2>
-        {mappedAssets.length > 0 ? (
-          <AssetMap assets={mappedAssets} />
-        ) : (
-          <p className="text-sm text-slate-500">No geocoded public assets available.</p>
-        )}
       </section>
 
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Asset</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Department</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Condition</th>
-              <th className="px-4 py-3 text-left font-semibold text-slate-700">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
-            {assets.length > 0 ? (
-              assets.map((asset) => (
-                <tr key={asset.id}>
-                  <td className="px-4 py-3 text-slate-800">{asset.name}</td>
-                  <td className="px-4 py-3 text-slate-700">{asset.type}</td>
-                  <td className="px-4 py-3 text-slate-700">{asset.department?.name ?? "-"}</td>
-                  <td className="px-4 py-3 text-slate-700">{asset.conditionScore ?? 100}</td>
-                  <td className="px-4 py-3 text-slate-700">{asset.status}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                  No public infrastructure records available.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <PublicTransparencyCharts assetConditionDistribution={assetConditionDistribution} />
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="mb-3 text-sm font-semibold text-slate-900">Infrastructure / Issues / Work Orders Map</h2>
+        <UnifiedCivicMap issues={mapIssues} assets={mapAssets} workOrders={mapWorkOrders} grants={[]} />
       </section>
     </div>
   );

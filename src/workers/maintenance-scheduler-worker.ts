@@ -1,6 +1,5 @@
 import { notifyOrganizationEditors } from "@/lib/notifications";
 import { dbSystem } from "@/lib/db";
-import { WorkOrderPriority, WorkOrderStatus } from "@prisma/client";
 
 const BATCH_SIZE = 500;
 
@@ -38,7 +37,7 @@ export async function runMaintenanceSchedulerWorker() {
         title: `Preventive Maintenance: ${schedule.name}`,
       })),
       status: {
-        in: [WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.BLOCKED],
+        in: ["OPEN", "IN_PROGRESS"],
       },
     },
     select: {
@@ -64,9 +63,9 @@ export async function runMaintenanceSchedulerWorker() {
         departmentId: schedule.asset.departmentId,
         title,
         description: `Auto-generated from maintenance schedule ${schedule.name}.`,
-        status: WorkOrderStatus.OPEN,
-        priority: WorkOrderPriority.MEDIUM,
-        scheduledDate: now,
+        status: "OPEN",
+        priority: "MEDIUM",
+        startedAt: now,
       };
     })
     .filter((value): value is NonNullable<typeof value> => Boolean(value));

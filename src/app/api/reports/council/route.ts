@@ -1,12 +1,12 @@
 import { auth } from "@/lib/auth"
 import { requireOrganization } from "@/lib/auth/require-org"
 import { dbSystem } from "@/lib/db"
-import { hasMinimumRole } from "@/lib/permissions"
+import { hasAnyRole } from "@/lib/permissions"
 import { NextResponse } from "next/server"
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.role || !hasMinimumRole(session.user.role, "ADMIN")) {
+  if (!session?.user || !hasAnyRole(session.user, ["SYSTEM_ADMIN", "CITY_ADMIN", "ADMIN"])) {
     return NextResponse.json({ error: "Forbidden." }, { status: 403 })
   }
   const organizationId = requireOrganization(session)

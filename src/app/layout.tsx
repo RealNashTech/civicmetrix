@@ -1,20 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 
 import { TopNav } from "@/components/layout/top-nav";
 
 import "./globals.css";
 import "mapbox-gl/dist/mapbox-gl.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "CivicMetrix",
@@ -29,7 +18,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
+        className="antialiased bg-gray-50"
+        style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif" }}
       >
         <TopNav />
         {children}

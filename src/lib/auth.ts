@@ -7,8 +7,10 @@ import { z } from "zod";
 import { validateEnv } from "@/lib/config/env";
 import { dbSystem } from "@/lib/db";
 import { setObservabilityContext } from "@/lib/observability/context";
+import { mapLegacyRoleToRbac } from "@/lib/permissions";
 import { consumeLoginRateLimit, penalizeLoginRateLimit } from "@/lib/security/login-rate-limit";
 import { setTenantContext } from "@/lib/tenant-context";
+import { AppRole } from "@/types/roles";
 
 validateEnv();
 
@@ -92,6 +94,7 @@ export const authOptions: NextAuthOptions = {
           },
           include: {
             organization: true,
+            role: true,
           },
         });
 
@@ -106,11 +109,13 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const effectiveRole = (user.role?.name ?? mapLegacyRoleToRbac(user.legacyRole)) as AppRole;
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: effectiveRole,
           organizationId: user.organizationId,
           organizationSlug: user.organization.slug,
           userType: "staff",
@@ -169,7 +174,7 @@ export const authOptions: NextAuthOptions = {
           id: citizen.id,
           email: citizen.email,
           name: citizen.name ?? citizen.email,
-          role: "VIEWER",
+          role: "PUBLIC_USER",
           organizationId: citizen.organizationId,
           organizationSlug: citizen.organization.slug,
           userType: "citizen",
@@ -195,10 +200,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = (token.role ?? "VIEWER") as
-          | "ADMIN"
-          | "EDITOR"
-          | "VIEWER";
+        session.user.role = (token.role ?? "PUBLIC_USER") as typeof session.user.role;
         session.user.organizationId = (token.organizationId as string) ?? "";
         session.user.organizationSlug = (token.organizationSlug as string) ?? "";
         session.user.userType = (token.userType as "staff" | "citizen" | undefined) ?? "staff";

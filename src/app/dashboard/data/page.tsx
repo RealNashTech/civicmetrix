@@ -2,10 +2,12 @@ import { randomUUID } from "crypto";
 
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 
 import { Card } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
 import { requireOrganization } from "@/lib/auth/require-org";
+import { hasAnyRole } from "@/lib/permissions";
 import { tenantDb } from "@/lib/tenantDb";
 
 const DATASET_TYPES = [
@@ -94,7 +96,7 @@ async function createImportRequest(formData: FormData) {
   if (!user) {
     notFound();
   }
-  if (user.role !== "ADMIN") {
+  if (!hasAnyRole(user, ["SYSTEM_ADMIN", "CITY_ADMIN", "ADMIN"])) {
     notFound();
   }
 
@@ -183,7 +185,7 @@ export default async function DataUploadCenterPage({
   if (!user) {
     return null;
   }
-  if (user.role !== "ADMIN") {
+  if (!hasAnyRole(user, ["SYSTEM_ADMIN", "CITY_ADMIN", "ADMIN"])) {
     notFound();
   }
 
@@ -264,6 +266,9 @@ export default async function DataUploadCenterPage({
         <p className="text-sm text-slate-600">
           Tenant-safe ingestion for municipal datasets in {data.organizationName}.
         </p>
+        <Link href="/dashboard/data/import-gis" className="mt-2 inline-block text-sm text-blue-600 hover:underline">
+          Open GIS Data Connector
+        </Link>
       </div>
 
       {query.success ? (

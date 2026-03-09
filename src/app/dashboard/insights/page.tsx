@@ -1,79 +1,80 @@
-import Link from "next/link";
-
-import { InsightSeverity, InsightType } from "@prisma/client";
-
 import { Card } from "@/components/ui/card";
 import { auth } from "@/lib/auth";
-import { hasMinimumRole } from "@/lib/permissions";
-import { db } from "@/lib/db";
-import { AppRole } from "@/types/roles";
+import { requireOrganization } from "@/lib/auth/require-org";
+import { requireAnyRole, RoleAccessError } from "@/lib/permissions";
+import { tenantDb } from "@/lib/tenantDb";
+import { notFound } from "next/navigation";
 
-import { resolveInsight } from "./actions";
-
-type InsightsPageProps = {
-  searchParams?: Promise<{ type?: string }> | { type?: string };
+type OperationalInsightRow = {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  severity: string;
+  createdAt: Date;
 };
 
-const typeFilters = ["ALL", "SERVICE_ANOMALY", "GRANT_RISK", "KPI_TREND_ALERT"] as const;
-type TypeFilter = (typeof typeFilters)[number];
-
-function badgeClasses(severity: InsightSeverity) {
-  if (severity === "CRITICAL") {
+function badgeClasses(severity: string) {
+  const normalized = severity.toUpperCase();
+  if (normalized === "CRITICAL") {
     return "bg-rose-100 text-rose-800";
   }
-  if (severity === "WARNING") {
+  if (normalized === "WARNING") {
     return "bg-amber-100 text-amber-800";
   }
   return "bg-slate-100 text-slate-700";
 }
 
-export default async function InsightsPage({ searchParams }: InsightsPageProps) {
-  const session = await auth();
-  const user = session?.user;
+function extractRelatedDepartment(description: string): string {
+  const match = description.match(/Department:\s*([^;]+)/i);
+  return match?.[1]?.trim() || "-";
+}
 
-  if (!user) {
+function extractRelatedEntity(description: string): string {
+  const match = description.match(/Related:\s*([^;]+)/i);
+  return match?.[1]?.trim() || "-";
+}
+
+export default async function InsightsPage() {
+  const session = await auth();
+  if (!session?.user) {
     return null;
   }
 
-  const role = user.role as AppRole;
-  const canResolve = hasMinimumRole(role, "EDITOR");
-  const resolvedSearch = await Promise.resolve(searchParams);
-  const requestedType = resolvedSearch?.type ?? "ALL";
-  const activeType: TypeFilter = typeFilters.includes(requestedType as TypeFilter)
-    ? (requestedType as TypeFilter)
-    : "ALL";
+  try {
+    await requireAnyRole(["SYSTEM_ADMIN", "CITY_ADMIN", "COUNCIL_MEMBER"], session.user);
+  } catch (error) {
+    if (error instanceof RoleAccessError) {
+      notFound();
+    }
+    throw error;
+  }
 
-  const insights = await db().insight.findMany({
-    where: {
-      organizationId: user.organizationId,
-      resolvedAt: null,
-      type: activeType === "ALL" ? undefined : (activeType as InsightType),
-    },
-    orderBy: { createdAt: "desc" },
+  const organizationId = requireOrganization(session);
+
+  const insights = await tenantDb<OperationalInsightRow[]>(organizationId, async (tx) => {
+    return tx.operationalInsight.findMany({
+      where: {
+        organizationId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 100,
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        description: true,
+        severity: true,
+        createdAt: true,
+      },
+    });
   });
 
   return (
     <div className="space-y-6">
       <Card title="Operational Insights">
-        <div className="mb-3 flex flex-wrap gap-2">
-          {typeFilters.map((filter) => {
-            const isActive = activeType === filter;
-            const href = filter === "ALL" ? "/dashboard/insights" : `/dashboard/insights?type=${filter}`;
-            return (
-              <Link
-                key={filter}
-                href={href}
-                className={`rounded-md border px-3 py-1 text-xs font-medium ${
-                  isActive
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {filter}
-              </Link>
-            );
-          })}
-        </div>
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
@@ -81,8 +82,9 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
                 <th className="px-4 py-3 text-left font-semibold text-slate-700">Severity</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-700">Title</th>
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">Department</th>
+                <th className="px-4 py-3 text-left font-semibold text-slate-700">Related Entity</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-700">Created Date</th>
-                <th className="px-4 py-3 text-left font-semibold text-slate-700">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -90,9 +92,7 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
                 insights.map((insight) => (
                   <tr key={insight.id}>
                     <td className="px-4 py-3 text-slate-700">
-                      <span
-                        className={`rounded px-2 py-1 text-xs font-medium ${badgeClasses(insight.severity)}`}
-                      >
+                      <span className={`rounded px-2 py-1 text-xs font-medium ${badgeClasses(insight.severity)}`}>
                         {insight.severity}
                       </span>
                     </td>
@@ -101,33 +101,20 @@ export default async function InsightsPage({ searchParams }: InsightsPageProps) 
                       <div className="font-medium">{insight.title}</div>
                       <p className="text-xs text-slate-500">{insight.description}</p>
                     </td>
+                    <td className="px-4 py-3 text-slate-700">{extractRelatedDepartment(insight.description)}</td>
+                    <td className="px-4 py-3 text-slate-700">{extractRelatedEntity(insight.description)}</td>
                     <td className="px-4 py-3 text-slate-700">
                       {new Intl.DateTimeFormat("en-US", {
                         dateStyle: "medium",
                         timeStyle: "short",
                       }).format(insight.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
-                      {canResolve ? (
-                        <form action={resolveInsight}>
-                          <input type="hidden" name="id" value={insight.id} />
-                          <button
-                            type="submit"
-                            className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-100"
-                          >
-                            Resolve
-                          </button>
-                        </form>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                    No active insights found.
+                  <td className="px-4 py-6 text-slate-500" colSpan={6}>
+                    No operational insights found.
                   </td>
                 </tr>
               )}

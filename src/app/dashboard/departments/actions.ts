@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createAuditLog } from "@/lib/audit";
-import { hasDepartmentAccess } from "@/lib/permissions";
+import { hasDepartmentAccess } from "@/lib/department-access";
 import { db } from "@/lib/db";
 import { requireStaffUser } from "@/lib/security/authorization";
 

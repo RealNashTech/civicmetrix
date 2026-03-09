@@ -1,25 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { WorkOrderStatus } from "@prisma/client";
 
 import { createAuditLog } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { requireStaffUser } from "@/lib/security/authorization";
 
-const ALLOWED_WORK_ORDER_STATUSES: WorkOrderStatus[] = [
-  WorkOrderStatus.OPEN,
-  WorkOrderStatus.IN_PROGRESS,
-  WorkOrderStatus.BLOCKED,
-  WorkOrderStatus.COMPLETED,
-];
+const ALLOWED_WORK_ORDER_STATUSES = ["OPEN", "IN_PROGRESS", "COMPLETE"] as const;
 
 export async function updateWorkOrderStatus(formData: FormData) {
   const user = await requireStaffUser("EDITOR");
 
   const id = String(formData.get("id") ?? "").trim();
   const statusRaw = String(formData.get("status") ?? "").trim();
-  const status = statusRaw as WorkOrderStatus;
+  const status = statusRaw as (typeof ALLOWED_WORK_ORDER_STATUSES)[number];
 
   if (!id || !ALLOWED_WORK_ORDER_STATUSES.includes(status)) {
     throw new Error("Invalid work order status update.");
@@ -41,7 +35,7 @@ export async function updateWorkOrderStatus(formData: FormData) {
     where: { id: existing.id },
     data: {
       status,
-      completedAt: status === "COMPLETED" ? new Date() : null,
+      completedAt: status === "COMPLETE" ? new Date() : null,
     },
   });
 
