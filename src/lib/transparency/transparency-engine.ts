@@ -1,4 +1,4 @@
-import { dbSystem } from "@/lib/db";
+import { tenantDb } from "@/lib/tenantDb";
 
 import {
   averageTransparencyComponents,
@@ -14,6 +14,39 @@ type CoverageRow = {
   name: string;
 };
 
+type GrantRow = {
+  id: string;
+  isPublic: boolean;
+  departmentId: string | null;
+};
+
+type KpiRow = {
+  id: string;
+  isPublic: boolean;
+  departmentId: string | null;
+};
+
+type IssueRow = {
+  id: string;
+  status: string;
+  departmentId: string | null;
+  assignedDepartmentId: string | null;
+};
+
+type BudgetRow = {
+  id: string;
+  departmentId: string | null;
+  program: {
+    departmentId: string | null;
+  } | null;
+};
+
+type AssetRow = {
+  id: string;
+  departmentId: string | null;
+  conditionScore: number | null;
+};
+
 function ratioScore(numerator: number, denominator: number, emptyFallback: number) {
   if (denominator <= 0) {
     return emptyFallback;
@@ -23,54 +56,58 @@ function ratioScore(numerator: number, denominator: number, emptyFallback: numbe
 }
 
 export async function calculateTransparencyScore(organizationId: string): Promise<TransparencyScore> {
-  const [departments, grants, kpis, issues, budgets, assets] = await Promise.all([
-    dbSystem().department.findMany({
-      where: { organizationId },
-      select: { id: true, name: true },
-    }),
-    dbSystem().grant.findMany({
-      where: { organizationId },
-      select: { id: true, isPublic: true, departmentId: true },
-    }),
-    dbSystem().kPI.findMany({
-      where: { organizationId },
-      select: { id: true, isPublic: true, departmentId: true },
-    }),
-    dbSystem().issueReport.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        status: true,
-        departmentId: true,
-        assignedDepartmentId: true,
-      },
-    }),
-    dbSystem().budget.findMany({
-      where: {
-        OR: [
-          { organizationId },
-          { program: { organizationId } },
-        ],
-      },
-      select: {
-        id: true,
-        departmentId: true,
-        program: {
+  const [departments, grants, kpis, issues, budgets, assets] = await tenantDb(
+    organizationId,
+    async (tx) =>
+      Promise.all([
+        tx.department.findMany({
+          where: { organizationId },
+          select: { id: true, name: true },
+        }),
+        tx.grant.findMany({
+          where: { organizationId },
+          select: { id: true, isPublic: true, departmentId: true },
+        }),
+        tx.kPI.findMany({
+          where: { organizationId },
+          select: { id: true, isPublic: true, departmentId: true },
+        }),
+        tx.issueReport.findMany({
+          where: { organizationId },
           select: {
+            id: true,
+            status: true,
             departmentId: true,
+            assignedDepartmentId: true,
           },
-        },
-      },
-    }),
-    dbSystem().asset.findMany({
-      where: { organizationId },
-      select: {
-        id: true,
-        departmentId: true,
-        conditionScore: true,
-      },
-    }),
-  ]);
+        }),
+        tx.budget.findMany({
+          where: {
+            OR: [
+              { organizationId },
+              { program: { organizationId } },
+            ],
+          },
+          select: {
+            id: true,
+            departmentId: true,
+            program: {
+              select: {
+                departmentId: true,
+              },
+            },
+          },
+        }),
+        tx.asset.findMany({
+          where: { organizationId },
+          select: {
+            id: true,
+            departmentId: true,
+            conditionScore: true,
+          },
+        }),
+      ]) as Promise<[CoverageRow[], GrantRow[], KpiRow[], IssueRow[], BudgetRow[], AssetRow[]]>,
+  );
 
   const publicGrants = grants.filter((grant) => grant.isPublic).length;
   const assetsWithCondition = assets.filter((asset) => asset.conditionScore != null).length;
